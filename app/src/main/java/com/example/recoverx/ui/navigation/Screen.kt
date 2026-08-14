@@ -16,6 +16,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Results : Screen("results", "Results", Icons.Filled.Search)
     object Preview : Screen("preview/{fileId}", "Preview", Icons.Filled.Image)
     object Recovering : Screen("recovering", "Recovering", Icons.Filled.CheckCircle)
+    object HistoryPreview : Screen("historyPreview", "History Preview", Icons.Filled.Image)
 }
 
 val bottomNavItems = listOf(Screen.Home, Screen.Scan, Screen.Recovery, Screen.Settings)

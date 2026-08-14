@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [RecoveryHistoryEntity::class], version = 1, exportSchema = false)
+@Database(entities = [RecoveryHistoryEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun recoveryHistoryDao(): RecoveryHistoryDao
 
@@ -18,7 +18,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "recoverx.db"
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration() // uriString column নতুন — local cache-এর জন্য destructive migration যথেষ্ট
+                    .build().also { INSTANCE = it }
             }
         }
     }

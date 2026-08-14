@@ -28,6 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.example.recoverx.model.AppSettings
 import com.example.recoverx.model.ScanResultsHolder
 import com.example.recoverx.scanner.MediaStoreScanner
@@ -46,6 +49,21 @@ fun ScanScreen(
     var cancelled by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var retryTrigger by remember { mutableIntStateOf(0) }
+
+    // Secure Folder-সহ যেকোনো accessible location manually add করার জন্য SAF picker।
+    // Knox/encrypted storage bypass করে না — শুধু user explicitly grant করা tree-ই যোগ হয়।
+    val addFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            AppSettings.safFolderUris.value = AppSettings.safFolderUris.value + treeUri.toString()
+            retryTrigger++
+        }
+    }
 
     LaunchedEffect(retryTrigger) {
         errorMessage = null
@@ -70,7 +88,8 @@ fun ScanScreen(
                 context = context,
                 includeImages = includeImages,
                 includeVideos = includeVideos,
-                includeDocuments = includeDocuments
+                includeDocuments = includeDocuments,
+                extraFolderUris = AppSettings.safFolderUris.value
             ) { scanned, found ->
                 if (!cancelled) {
                     filesScanned = scanned
@@ -168,6 +187,10 @@ fun ScanScreen(
         Spacer(modifier = Modifier.height(40.dp))
 
         if (!isComplete) {
+            OutlinedButton(onClick = { addFolderLauncher.launch(null) }) {
+                Text("Add Folder (Secure Folder ইত্যাদি)")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(onClick = {
                 cancelled = true
                 onCancel()

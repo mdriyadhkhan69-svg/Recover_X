@@ -15,7 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 sealed class RecoveryResult {
-    object Success : RecoveryResult()
+    data class Success(val recoveredUri: String? = null) : RecoveryResult()
     data class NeedsPermission(val intentSender: IntentSender) : RecoveryResult()
     data class Failed(val reason: String) : RecoveryResult()
 }
@@ -41,7 +41,7 @@ object RecoveryEngine {
         return try {
             val values = ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 0) }
             val rows = context.contentResolver.update(uri, values, null, null)
-            if (rows > 0) RecoveryResult.Success else RecoveryResult.Failed("Restore করা যায়নি")
+            if (rows > 0) RecoveryResult.Success(uri.toString()) else RecoveryResult.Failed("Restore করা যায়নি")
         } catch (e: RecoverableSecurityException) {
             // Android অনেক সময় owner app না হলে user-এর explicit confirmation চায়
             RecoveryResult.NeedsPermission(e.userAction.actionIntent.intentSender)
@@ -79,7 +79,7 @@ object RecoveryEngine {
             values.put(MediaStore.Downloads.IS_PENDING, 0)
             resolver.update(destUri, values, null, null)
 
-            RecoveryResult.Success
+            RecoveryResult.Success(destUri.toString())
         } catch (e: Exception) {
             RecoveryResult.Failed(e.message ?: "Unknown error")
         }

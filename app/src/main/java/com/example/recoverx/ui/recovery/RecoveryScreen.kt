@@ -84,7 +84,8 @@ fun RecoveryScreen(
                     fileName = file.name,
                     dateLabel = "Just now",
                     category = file.category,
-                    status = status
+                    status = status,
+                    uriString = (result as? RecoveryResult.Success)?.recoveredUri
                 )
             )
         }

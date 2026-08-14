@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,10 +94,13 @@ fun ResultsScreen(
                     file = file,
                     onClick = { onFileClick(file) },
                     onCheckedChange = { checked ->
-                        // পুরো list রিবিল্ড না করে শুধু বদলানো item-টার reference বদলানো হচ্ছে
-                        files = files.map {
+                        val updated = files.map {
                             if (it.id == file.id) it.copy(isSelected = checked) else it
                         }
+                        files = updated
+                        // Selection holder-এও persist করা হচ্ছে, যাতে Preview খুলে Back করলে
+                        // ResultsScreen নতুন করে composed হলেও selection হারিয়ে না যায়
+                        com.example.recoverx.model.ScanResultsHolder.results = updated
                     }
                 )
             }
@@ -135,14 +139,10 @@ private fun FileResultCard(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Icon(
-                    imageVector = when (file.category) {
-                        FileCategory.PHOTO -> Icons.Filled.Image
-                        FileCategory.VIDEO -> Icons.Filled.Videocam
-                        FileCategory.DOCUMENT -> Icons.Filled.Description
-                    },
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                com.example.recoverx.ui.common.FileThumbnail(
+                    uriString = file.uriString,
+                    category = file.category,
+                    modifier = Modifier.size(48.dp)
                 )
                 Column(
                     modifier = Modifier

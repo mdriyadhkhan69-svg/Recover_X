@@ -90,7 +90,15 @@ fun NavGraph(navController: NavHostController) {
             )
         }
         composable(Screen.Recovery.route) {
-            HistoryScreen()
+            HistoryScreen(
+                onItemClick = { item ->
+                    com.example.recoverx.model.HistoryPreviewHolder.item = item
+                    navController.navigate(Screen.HistoryPreview.route)
+                }
+            )
+        }
+        composable(Screen.HistoryPreview.route) {
+            com.example.recoverx.ui.history.HistoryPreviewScreen()
         }
         composable(Screen.Settings.route) {
             SettingsScreen()

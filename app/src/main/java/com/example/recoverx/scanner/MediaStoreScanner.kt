@@ -75,6 +75,7 @@ object MediaStoreScanner {
         includeImages: Boolean,
         includeVideos: Boolean,
         includeDocuments: Boolean,
+        extraFolderUris: Set<String> = emptySet(),
         onProgress: (scanned: Int, found: Int) -> Unit
     ): List<ScannedFile> = withContext(Dispatchers.IO) {
         val results = mutableListOf<ScannedFile>()
@@ -101,11 +102,102 @@ object MediaStoreScanner {
             )
         }
         if (includeDocuments && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            safeScanDocuments(context, results, scanned, onProgress)
+            scanned = safeScanDocuments(context, results, scanned, onProgress)
+        }
+        if (extraFolderUris.isNotEmpty()) {
+            scanned = safeScanSafFolders(
+                context, extraFolderUris, includeImages, includeVideos, includeDocuments,
+                results, scanned, onProgress
+            )
         }
         // চূড়ান্ত নিশ্চিতভাবে একবার সঠিক ফাইনাল কাউন্ট পাঠানো
         onProgress(results.size, results.size)
         results
+    }
+
+    private fun safeScanSafFolders(
+        context: Context,
+        treeUris: Set<String>,
+        includeImages: Boolean,
+        includeVideos: Boolean,
+        includeDocuments: Boolean,
+        results: MutableList<ScannedFile>,
+        startScanned: Int,
+        onProgress: (Int, Int) -> Unit
+    ): Int {
+        var scanned = startScanned
+        for (treeUriString in treeUris) {
+            try {
+                val treeUri = Uri.parse(treeUriString)
+                val root = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+                if (root != null && root.isDirectory) {
+                    scanned = scanDocumentTree(
+                        root, includeImages, includeVideos, includeDocuments,
+                        results, scanned, onProgress
+                    )
+                }
+            } catch (e: SecurityException) {
+                Log.w(TAG, "SAF folder access permission নেই: ${e.message}")
+            } catch (e: Exception) {
+                Log.w(TAG, "SAF folder scan ব্যর্থ: ${e.message}")
+            }
+        }
+        return scanned
+    }
+
+    private fun scanDocumentTree(
+        dir: androidx.documentfile.provider.DocumentFile,
+        includeImages: Boolean,
+        includeVideos: Boolean,
+        includeDocuments: Boolean,
+        results: MutableList<ScannedFile>,
+        startScanned: Int,
+        onProgress: (Int, Int) -> Unit
+    ): Int {
+        var scanned = startScanned
+        val children = try { dir.listFiles() } catch (e: Exception) { emptyArray() }
+        for (child in children) {
+            try {
+                if (child.isDirectory) {
+                    scanned = scanDocumentTree(
+                        child, includeImages, includeVideos, includeDocuments,
+                        results, scanned, onProgress
+                    )
+                    continue
+                }
+                val mime = child.type ?: ""
+                val category = when {
+                    mime.startsWith("image/") -> FileCategory.PHOTO
+                    mime.startsWith("video/") -> FileCategory.VIDEO
+                    else -> FileCategory.DOCUMENT
+                }
+                val shouldInclude = when (category) {
+                    FileCategory.PHOTO -> includeImages
+                    FileCategory.VIDEO -> includeVideos
+                    FileCategory.DOCUMENT -> includeDocuments
+                }
+                if (shouldInclude) {
+                    results.add(
+                        ScannedFile(
+                            id = "saf-${child.uri}",
+                            name = child.name ?: "Unknown file",
+                            sizeLabel = formatSize(child.length()),
+                            category = category,
+                            confidence = RecoveryConfidence.ON_DEVICE,
+                            uriString = child.uri.toString(),
+                            dateAddedLabel = formatDate(child.lastModified() / 1000)
+                        )
+                    )
+                }
+            } catch (rowError: Exception) {
+                Log.w(TAG, "SAF entry পড়া যায়নি, স্কিপ করা হলো: ${rowError.message}")
+            }
+            scanned++
+            if (scanned % PROGRESS_BATCH_SIZE == 0) {
+                onProgress(scanned, results.size)
+            }
+        }
+        return scanned
     }
 
     private fun safeScanMedia(

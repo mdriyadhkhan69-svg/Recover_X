@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,7 +38,7 @@ import com.example.recoverx.model.RecoveryHistoryRepository
 import kotlinx.coroutines.launch
 
 @Composable
-fun HistoryScreen() {
+fun HistoryScreen(onItemClick: (RecoveryHistoryItem) -> Unit = {}) {
     val context = LocalContext.current
     val repository = remember { RecoveryHistoryRepository(context) }
     val scope = rememberCoroutineScope()
@@ -69,7 +71,8 @@ fun HistoryScreen() {
                 items(items, key = { it.id }) { item ->
                     HistoryCard(
                         item = item,
-                        onDelete = { scope.launch { repository.remove(item.id) } }
+                        onDelete = { scope.launch { repository.remove(item.id) } },
+                        onClick = { onItemClick(item) }
                     )
                 }
             }
@@ -78,9 +81,9 @@ fun HistoryScreen() {
 }
 
 @Composable
-private fun HistoryCard(item: RecoveryHistoryItem, onDelete: () -> Unit) {
+private fun HistoryCard(item: RecoveryHistoryItem, onDelete: () -> Unit, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
@@ -90,14 +93,10 @@ private fun HistoryCard(item: RecoveryHistoryItem, onDelete: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Icon(
-                    imageVector = when (item.category) {
-                        FileCategory.PHOTO -> Icons.Filled.Image
-                        FileCategory.VIDEO -> Icons.Filled.Videocam
-                        FileCategory.DOCUMENT -> Icons.Filled.Description
-                    },
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                com.example.recoverx.ui.common.FileThumbnail(
+                    uriString = item.uriString,
+                    category = item.category,
+                    modifier = Modifier.size(48.dp)
                 )
                 Column(modifier = Modifier.padding(start = 12.dp)) {
                     Text(

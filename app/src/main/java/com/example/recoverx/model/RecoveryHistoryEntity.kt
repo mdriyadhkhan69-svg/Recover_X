@@ -8,9 +8,10 @@ data class RecoveryHistoryEntity(
     @PrimaryKey val id: String,
     val fileName: String,
     val dateLabel: String,
-    val category: String, // FileCategory enum-কে String হিসেবে সেভ করছি, সহজ রাখার জন্য
+    val category: String,
     val status: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val uriString: String? = null
 )
 
 fun RecoveryHistoryEntity.toItem() = RecoveryHistoryItem(
@@ -18,5 +19,6 @@ fun RecoveryHistoryEntity.toItem() = RecoveryHistoryItem(
     fileName = fileName,
     dateLabel = dateLabel,
     category = FileCategory.valueOf(category),
-    status = status
+    status = status,
+    uriString = uriString
 )

@@ -16,5 +16,9 @@ object AppSettings {
 
     val confirmBeforeRecovery = mutableStateOf(true)
 
+    // SAF দিয়ে user manually add করা folder (যেমন Secure Folder-এর accessible tree)।
+    // MediaStore-এর বাইরের কিন্তু legitimately accessible location কভার করার জন্য।
+    val safFolderUris = mutableStateOf<Set<String>>(emptySet())
+
     const val appVersion = "1.0.0 (Beta)"
 }

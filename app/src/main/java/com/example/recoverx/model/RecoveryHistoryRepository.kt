@@ -26,7 +26,8 @@ class RecoveryHistoryRepository(context: Context) {
                     dateLabel = item.dateLabel,
                     category = item.category.name,
                     status = item.status,
-                    timestamp = System.currentTimeMillis()
+                    timestamp = System.currentTimeMillis(),
+                    uriString = item.uriString
                 )
             )
         } catch (e: Exception) {
