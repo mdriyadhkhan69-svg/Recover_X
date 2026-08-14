@@ -24,6 +24,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,9 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.recoverx.model.FileCategory
 import com.example.recoverx.model.ScannedFile
-import com.example.recoverx.model.sampleScannedFiles
 import androidx.compose.foundation.clickable
-import com.example.recoverx.model.sampleScannedFiles
+
 private enum class ResultTab(val label: String) { ALL("All"), PHOTOS("Photos"), VIDEOS("Videos"), DOCS("Documents") }
 
 @Composable
@@ -46,14 +46,22 @@ fun ResultsScreen(
     var files by remember { mutableStateOf(com.example.recoverx.model.ScanResultsHolder.results) }
     var selectedTab by remember { mutableStateOf(ResultTab.ALL) }
 
-    val filtered = when (selectedTab) {
-        ResultTab.ALL -> files
-        ResultTab.PHOTOS -> files.filter { it.category == FileCategory.PHOTO }
-        ResultTab.VIDEOS -> files.filter { it.category == FileCategory.VIDEO }
-        ResultTab.DOCS -> files.filter { it.category == FileCategory.DOCUMENT }
+    // files বা selectedTab আসলেই না বদলালে filter আবার হিসাব হবে না —
+    // বড় লিস্টে checkbox toggle করার সময় এটা lag কমায়
+    val filtered by remember {
+        derivedStateOf {
+            when (selectedTab) {
+                ResultTab.ALL -> files
+                ResultTab.PHOTOS -> files.filter { it.category == FileCategory.PHOTO }
+                ResultTab.VIDEOS -> files.filter { it.category == FileCategory.VIDEO }
+                ResultTab.DOCS -> files.filter { it.category == FileCategory.DOCUMENT }
+            }
+        }
     }
 
-    val selectedCount = files.count { it.isSelected }
+    val selectedCount by remember {
+        derivedStateOf { files.count { it.isSelected } }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -85,6 +93,7 @@ fun ResultsScreen(
                     file = file,
                     onClick = { onFileClick(file) },
                     onCheckedChange = { checked ->
+                        // পুরো list রিবিল্ড না করে শুধু বদলানো item-টার reference বদলানো হচ্ছে
                         files = files.map {
                             if (it.id == file.id) it.copy(isSelected = checked) else it
                         }
@@ -160,4 +169,3 @@ private fun FileResultCard(
         }
     }
 }
-

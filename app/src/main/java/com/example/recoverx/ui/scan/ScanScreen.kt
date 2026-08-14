@@ -3,14 +3,16 @@ package com.example.recoverx.ui.scan
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -42,31 +44,50 @@ fun ScanScreen(
     var filesFound by remember { mutableIntStateOf(0) }
     var isComplete by remember { mutableStateOf(false) }
     var cancelled by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var retryTrigger by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        val includeImages = AppSettings.scanImages.value
-        val includeVideos = AppSettings.scanVideos.value
-        val includeDocuments = AppSettings.scanDocuments.value
+    LaunchedEffect(retryTrigger) {
+        errorMessage = null
+        progress = 0f
+        filesScanned = 0
+        filesFound = 0
+        isComplete = false
 
-        val total = MediaStoreScanner.countTotal(context, includeImages, includeVideos, includeDocuments)
+        try {
+            val includeImages = AppSettings.scanImages.value
+            val includeVideos = AppSettings.scanVideos.value
+            val includeDocuments = AppSettings.scanDocuments.value
 
-        val results = MediaStoreScanner.scan(
-            context = context,
-            includeImages = includeImages,
-            includeVideos = includeVideos,
-            includeDocuments = includeDocuments
-        ) { scanned, found ->
-            if (!cancelled) {
-                filesScanned = scanned
-                filesFound = found
-                progress = (scanned.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+            if (!includeImages && !includeVideos && !includeDocuments) {
+                errorMessage = "Settings-এ কোনো ক্যাটাগরি বাছাই করা নেই। Settings থেকে অন্তত একটা চালু করো।"
+                return@LaunchedEffect
             }
-        }
 
-        if (!cancelled) {
-            ScanResultsHolder.results = results
-            progress = 1f
-            isComplete = true
+            val total = MediaStoreScanner.countTotal(context, includeImages, includeVideos, includeDocuments)
+
+            val results = MediaStoreScanner.scan(
+                context = context,
+                includeImages = includeImages,
+                includeVideos = includeVideos,
+                includeDocuments = includeDocuments
+            ) { scanned, found ->
+                if (!cancelled) {
+                    filesScanned = scanned
+                    filesFound = found
+                    progress = (scanned.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                }
+            }
+
+            if (!cancelled) {
+                ScanResultsHolder.results = results
+                progress = 1f
+                isComplete = true
+            }
+        } catch (e: SecurityException) {
+            errorMessage = "Storage access permission নেই। Settings থেকে permission দিয়ে আবার চেষ্টা করো।"
+        } catch (e: Exception) {
+            errorMessage = "Scan করতে সমস্যা হয়েছে। আবার চেষ্টা করো।"
         }
     }
 
@@ -77,6 +98,37 @@ fun ScanScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        if (errorMessage != null) {
+            // Error state
+            Icon(
+                imageVector = Icons.Filled.ErrorOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(56.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Scan ব্যর্থ হয়েছে",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = errorMessage ?: "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(onClick = { retryTrigger++ }) {
+                Text("আবার চেষ্টা করো")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onCancel) {
+                Text("Cancel")
+            }
+            return@Column
+        }
+
         Text(
             text = if (isComplete) "Scan Complete" else "Scanning Storage",
             style = MaterialTheme.typography.headlineMedium,
