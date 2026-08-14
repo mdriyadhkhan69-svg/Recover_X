@@ -1,5 +1,9 @@
 package com.example.recoverx.ui.recovery
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -23,32 +27,64 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.recoverx.model.RecoveryHistoryItem
 import com.example.recoverx.model.ScannedFile
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 
 @Composable
 fun RecoveryScreen(
     filesToRecover: List<ScannedFile>,
     onOpenRecovered: () -> Unit
 ) {
+    val context = LocalContext.current
+    val repository = remember { com.example.recoverx.model.RecoveryHistoryRepository(context) }
     var isComplete by remember { mutableStateOf(false) }
     var successCount by remember { mutableIntStateOf(0) }
     var failedCount by remember { mutableIntStateOf(0) }
+    var processedCount by remember { mutableIntStateOf(0) }
 
-    // Simulated recovery — Phase 15-এ আসল file copy logic দিয়ে replace হবে
+    // Trash restore-এর জন্য মাঝপথে system permission dialog লাগলে
+    // সেটার ফলাফলের জন্য অপেক্ষা করার bridge
+    var pendingDeferred by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        pendingDeferred?.complete(result.resultCode == Activity.RESULT_OK)
+        pendingDeferred = null
+    }
+
     LaunchedEffect(filesToRecover) {
         for (file in filesToRecover) {
-            delay(400)
-            // এখন পর্যন্ত সবসময় success ধরছি; Phase 15-এ আসল success/fail আসবে
-            successCount += 1
-            com.example.recoverx.model.RecoveryHistoryHolder.add(
-                com.example.recoverx.model.RecoveryHistoryItem(
+            var result = RecoveryEngine.recover(context, file)
+
+            if (result is RecoveryResult.NeedsPermission) {
+                val deferred = CompletableDeferred<Boolean>()
+                pendingDeferred = deferred
+                permissionLauncher.launch(
+                    IntentSenderRequest.Builder(result.intentSender).build()
+                )
+                val granted = deferred.await()
+                result = if (granted) {
+                    RecoveryEngine.recover(context, file)
+                } else {
+                    RecoveryResult.Failed("Permission দেওয়া হয়নি")
+                }
+            }
+
+            val status = if (result is RecoveryResult.Success) "Recovered" else "Failed"
+            if (status == "Recovered") successCount += 1 else failedCount += 1
+            processedCount += 1
+
+            repository.add(
+                RecoveryHistoryItem(
                     id = "${file.id}-${System.currentTimeMillis()}",
                     fileName = file.name,
                     dateLabel = "Just now",
                     category = file.category,
-                    status = "Recovered"
+                    status = status
                 )
             )
         }
@@ -75,7 +111,7 @@ fun RecoveryScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "${successCount + failedCount} of ${filesToRecover.size}",
+                text = "$processedCount of ${filesToRecover.size}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             )
@@ -105,13 +141,13 @@ fun RecoveryScreen(
                 else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             )
             Text(
-                text = "Location: /RecoverX/Recovered",
+                text = "Location: Downloads/RecoverX/Recovered",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
             )
             Spacer(modifier = Modifier.height(32.dp))
             Button(onClick = onOpenRecovered) {
-                Text("Open Recovered Files")
+                Text("Done")
             }
         }
     }

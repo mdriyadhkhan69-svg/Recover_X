@@ -149,7 +149,10 @@ private fun FileResultCard(
                     Text(
                         text = "${file.sizeLabel} · ${file.recoveryStatus}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = if (file.confidence == com.example.recoverx.model.RecoveryConfidence.TRASHED)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
             }

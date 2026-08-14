@@ -22,22 +22,25 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.recoverx.model.FileCategory
-import com.example.recoverx.model.RecoveryHistoryHolder
 import com.example.recoverx.model.RecoveryHistoryItem
+import com.example.recoverx.model.RecoveryHistoryRepository
+import kotlinx.coroutines.launch
 
 @Composable
 fun HistoryScreen() {
-    // recompose trigger — একটা item delete হলে list রিফ্রেশ করার জন্য
-    var refreshTrigger by remember { mutableStateOf(0) }
-    val items = RecoveryHistoryHolder.items
+    val context = LocalContext.current
+    val repository = remember { RecoveryHistoryRepository(context) }
+    val scope = rememberCoroutineScope()
+    val items by repository.observeAll().collectAsState(initial = emptyList())
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -48,10 +51,7 @@ fun HistoryScreen() {
         )
 
         if (items.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = "এখনো কোনো recovery history নেই",
                     style = MaterialTheme.typography.bodyMedium,
@@ -69,10 +69,7 @@ fun HistoryScreen() {
                 items(items, key = { it.id }) { item ->
                     HistoryCard(
                         item = item,
-                        onDelete = {
-                            RecoveryHistoryHolder.remove(item.id)
-                            refreshTrigger++ // recompose করানোর জন্য
-                        }
+                        onDelete = { scope.launch { repository.remove(item.id) } }
                     )
                 }
             }
@@ -81,19 +78,14 @@ fun HistoryScreen() {
 }
 
 @Composable
-private fun HistoryCard(
-    item: RecoveryHistoryItem,
-    onDelete: () -> Unit
-) {
+private fun HistoryCard(item: RecoveryHistoryItem, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -121,11 +113,7 @@ private fun HistoryCard(
                 }
             }
             IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error
-                )
+                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
             }
         }
     }
