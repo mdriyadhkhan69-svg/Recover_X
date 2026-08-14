@@ -1,5 +1,4 @@
-package com.recoverx.app.ui.theme
-
+package com.example.recoverx.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Dark theme colors

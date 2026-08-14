@@ -1,5 +1,4 @@
-package com.recoverx.app.ui.theme
-
+package com.example.recoverx.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme

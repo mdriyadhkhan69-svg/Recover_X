@@ -56,7 +56,7 @@ object MediaStoreScanner {
     private fun countRows(context: Context, uri: Uri, trashed: Boolean, documentsOnly: Boolean = false): Int {
         val (selection, args) = buildSelection(trashed, documentsOnly)
         val queryUri = if (trashed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            uri.buildUpon().appendQueryParameter(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY).build()
+            uri.buildUpon().appendQueryParameter(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY.toString()).build()
         } else uri
         return context.contentResolver.query(queryUri, arrayOf(MediaStore.MediaColumns._ID), selection, args, null)
             ?.use { it.count } ?: 0
@@ -155,7 +155,7 @@ object MediaStoreScanner {
         )
 
         val queryUri = if (trashed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            baseUri.buildUpon().appendQueryParameter(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY).build()
+            baseUri.buildUpon().appendQueryParameter(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY.toString()).build()
         } else if (trashed) {
             return scanned
         } else baseUri
