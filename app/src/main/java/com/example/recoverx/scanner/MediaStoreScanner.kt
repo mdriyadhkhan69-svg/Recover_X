@@ -129,15 +129,11 @@ object MediaStoreScanner {
                 results, scanned, onProgress
             )
         }
-        // Merge duplicates that surfaced through more than one source (MediaStore + SAF, etc).
-        // Keep the entry with the larger size (fuller/original copy over a thumbnail-sized dupe).
-        val deduped = results
-            .groupBy { it.dedupeKey.ifBlank { it.id } }
-            .map { (_, group) -> group.maxByOrNull { it.sizeBytes } ?: group.first() }
-
-        // চূড়ান্ত নিশ্চিতভাবে একবার সঠিক ফাইনাল কাউন্ট পাঠানো
-        onProgress(deduped.size, deduped.size)
-        deduped
+        // No dedup here — raw discovered results must be returned as-is. Merging/curation only
+        // happens later, on user-triggered Filter (see ScannerCoordinator/ResultsScreen), so this
+        // count can never silently shrink and this pass never blocks scan completion.
+        onProgress(results.size, results.size)
+        results
     }
 
     private fun safeScanSafFolders(
