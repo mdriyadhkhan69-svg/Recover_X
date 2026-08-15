@@ -72,7 +72,15 @@ fun ResultsScreen(
     // chip below applies the recoverable-only filter instantly, in-memory, no rescan needed.
     // RAW vs FILTERED state — filteredIds == null means "showing every discovered result";
     // once the user presses Filter, filteredIds holds the ids that survived filtering.
-    var filteredIds by remember { mutableStateOf<Set<String>?>(null) }
+    // Scan Complete screen-এর নতুন Filter button থেকে আসা pending filtered set থাকলে সেটা দিয়েই
+    // শুরু হবে (একবার পড়ে সাথে সাথে holder clear); না থাকলে যথারীতি raw/unfiltered দেখাবে।
+    var filteredIds by remember {
+        mutableStateOf<Set<String>?>(
+            com.example.recoverx.model.ResultsFilterHolder.pendingFilteredIds?.also {
+                com.example.recoverx.model.ResultsFilterHolder.pendingFilteredIds = null
+            }
+        )
+    }
     var isFiltering by remember { mutableStateOf(false) }
     var filterProgress by remember { mutableFloatStateOf(0f) }
     val filterScope = rememberCoroutineScope()

@@ -113,11 +113,11 @@ object ScannerCoordinator {
         }
         allResults.addAll(thumbResults)
 
-        onProgress(ScanProgressUpdate(totalScanned, allResults.size, "Merging duplicates..."))
-        val deduped = DeduplicationEngine.merge(allResults)
-
-        onProgress(ScanProgressUpdate(totalScanned, deduped.size, "Done"))
-        return ScanOutcome(results = deduped, inaccessibleLocations = inaccessible.distinct())
+        // No automatic dedup/curation here anymore — Scan Complete and the initial Results
+        // screen must always reflect every raw discovered item. Any reduction (e.g. recoverable-
+        // only filtering) happens ONLY when the user explicitly presses Filter on the Results screen.
+        onProgress(ScanProgressUpdate(totalScanned, allResults.size, "Done"))
+        return ScanOutcome(results = allResults, inaccessibleLocations = inaccessible.distinct())
     }
 
     private fun pathFromUri(uriString: String?): String? {

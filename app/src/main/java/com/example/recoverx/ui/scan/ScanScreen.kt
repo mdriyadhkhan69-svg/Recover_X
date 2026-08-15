@@ -34,6 +34,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.example.recoverx.model.AppSettings
 import com.example.recoverx.model.ScanResultsHolder
 import com.example.recoverx.scanner.MediaStoreScanner
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @Composable
 fun ScanScreen(
@@ -51,6 +54,13 @@ fun ScanScreen(
     var currentSourceLabel by remember { mutableStateOf("") }
     var inaccessibleLocations by remember { mutableStateOf(emptyList<String>()) }
     var retryTrigger by remember { mutableIntStateOf(0) }
+
+    // Filter চাপার জন্য নতুন state — শুধু Scan Complete screen-এর নিজস্ব Filter button-এর জন্য।
+    // এটা কখনো raw ScanResultsHolder.results replace করে না; শুধু filtered id set আলাদাভাবে
+    // ResultsFilterHolder-এ পাঠায়, Results screen সেটা পড়ে filtered view দেখায়।
+    var isFilteringOnScan by remember { mutableStateOf(false) }
+    var scanFilterProgress by remember { mutableFloatStateOf(0f) }
+    val scanFilterScope = rememberCoroutineScope()
     // Secure Folder-সহ যেকোনো accessible location manually add করার জন্য SAF picker।
     // Knox/encrypted storage bypass করে না — শুধু user explicitly grant করা tree-ই যোগ হয়।
     val addFolderLauncher = rememberLauncherForActivityResult(
@@ -65,7 +75,33 @@ fun ScanScreen(
             retryTrigger++
         }
     }
-
+    fun runFilterThenViewResults() {
+        scanFilterScope.launch {
+            isFilteringOnScan = true
+            scanFilterProgress = 0f
+            val snapshot = ScanResultsHolder.results
+            val chunkSize = (snapshot.size / 10).coerceAtLeast(1)
+            val survivedIds = mutableSetOf<String>()
+            var index = 0
+            while (index < snapshot.size) {
+                val end = (index + chunkSize).coerceAtMost(snapshot.size)
+                for (i in index until end) {
+                    val f = snapshot[i]
+                    if (f.liveStatus != com.example.recoverx.model.LiveStatus.LIVE) {
+                        survivedIds.add(f.id)
+                    }
+                }
+                index = end
+                scanFilterProgress = (index.toFloat() / snapshot.size.toFloat()).coerceIn(0f, 1f)
+                delay(60)
+            }
+            com.example.recoverx.model.ResultsFilterHolder.pendingFilteredIds = survivedIds
+            scanFilterProgress = 1f
+            delay(150)
+            isFilteringOnScan = false
+            onScanComplete(filesFound)
+        }
+    }
     LaunchedEffect(retryTrigger) {
         errorMessage = null
         progress = 0f
@@ -220,6 +256,27 @@ fun ScanScreen(
             }) {
                 Text("Cancel")
             }
+        } else if (isFilteringOnScan) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = { scanFilterProgress },
+                    modifier = Modifier.size(120.dp),
+                    strokeWidth = 8.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+                Text(
+                    text = "${(scanFilterProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Filtering Results...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+            )
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
@@ -232,6 +289,10 @@ fun ScanScreen(
                     onScanComplete(filesFound)
                 }) {
                     Text("View Results")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = { runFilterThenViewResults() }) {
+                    Text("Filter")
                 }
             }
         }
