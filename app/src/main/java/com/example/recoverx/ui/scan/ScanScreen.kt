@@ -229,17 +229,12 @@ fun ScanScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = {
-                    com.example.recoverx.model.ScanResultsHolder.showAllOnOpen = false
-                    onScanComplete(filesFound)
-                }) {
-                    Text("View Results")
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(onClick = {
+                    // Always open showing everything found immediately — filtering to
+                    // recoverable-only happens instantly inside ResultsScreen without rescanning.
                     com.example.recoverx.model.ScanResultsHolder.showAllOnOpen = true
                     onScanComplete(filesFound)
                 }) {
-                    Text("View All")
+                    Text("View Results")
                 }
             }
         }

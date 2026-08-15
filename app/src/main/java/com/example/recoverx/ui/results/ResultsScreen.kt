@@ -62,11 +62,11 @@ fun ResultsScreen(
     var files by remember { mutableStateOf(com.example.recoverx.model.ScanResultsHolder.results) }
     var selectedTab by remember { mutableStateOf(ResultTab.ALL) }
     var viewMode by AppSettings.resultViewMode
-    // Decided on the Scan Complete screen (View All vs View Results), passed via the holder —
-    // not re-toggleable here.
-    val showAllFiles = remember { com.example.recoverx.model.ScanResultsHolder.showAllOnOpen }
+    // Opens showing everything by default (fast, no extra wait after scan). Tapping the filter
+    // chip below applies the recoverable-only filter instantly, in-memory, no rescan needed.
+    var showAllFiles by remember { mutableStateOf(true) }
 
-    val curated by remember(files) {
+    val curated by remember(showAllFiles, files) {
         derivedStateOf {
             if (showAllFiles) files
             else files.filter { it.liveStatus != com.example.recoverx.model.LiveStatus.LIVE }
@@ -100,7 +100,8 @@ fun ResultsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${files.size} files found",
+                text = if (showAllFiles) "${files.size} files found"
+                else "${curated.size} recoverable of ${files.size} found",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -122,6 +123,22 @@ fun ResultsScreen(
                     text = { Text(tab.label) }
                 )
             }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            androidx.compose.material3.FilterChip(
+                selected = showAllFiles,
+                onClick = { showAllFiles = true },
+                label = { Text("All") }
+            )
+            androidx.compose.material3.FilterChip(
+                selected = !showAllFiles,
+                onClick = { showAllFiles = false },
+                label = { Text("Recoverable Only") }
+            )
         }
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
