@@ -62,17 +62,16 @@ fun ResultsScreen(
     var files by remember { mutableStateOf(com.example.recoverx.model.ScanResultsHolder.results) }
     var selectedTab by remember { mutableStateOf(ResultTab.ALL) }
     var viewMode by AppSettings.resultViewMode
-    // Default: only actual recovery candidates (excludes files that are just LIVE/currently
-    // present on device). "View All" shows every scanned file including live ones.
-    var showAllFiles by remember { mutableStateOf(false) }
+    // Decided on the Scan Complete screen (View All vs View Results), passed via the holder —
+    // not re-toggleable here.
+    val showAllFiles = remember { com.example.recoverx.model.ScanResultsHolder.showAllOnOpen }
 
-    val curated by remember(showAllFiles, files) {
+    val curated by remember(files) {
         derivedStateOf {
             if (showAllFiles) files
             else files.filter { it.liveStatus != com.example.recoverx.model.LiveStatus.LIVE }
         }
     }
-
     // Filtering is derived straight from `curated`, and the header count below is derived from
     // the SAME `files` list — so the header count and the rendered list can never disagree.
     val filtered by remember {
@@ -123,22 +122,6 @@ fun ResultsScreen(
                     text = { Text(tab.label) }
                 )
             }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            androidx.compose.material3.FilterChip(
-                selected = !showAllFiles,
-                onClick = { showAllFiles = false },
-                label = { Text("Recoverable Only") }
-            )
-            androidx.compose.material3.FilterChip(
-                selected = showAllFiles,
-                onClick = { showAllFiles = true },
-                label = { Text("View All") }
-            )
         }
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {

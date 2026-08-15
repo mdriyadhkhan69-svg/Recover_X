@@ -228,8 +228,18 @@ fun ScanScreen(
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { onScanComplete(filesFound) }) {
+                Button(onClick = {
+                    com.example.recoverx.model.ScanResultsHolder.showAllOnOpen = false
+                    onScanComplete(filesFound)
+                }) {
                     Text("View Results")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = {
+                    com.example.recoverx.model.ScanResultsHolder.showAllOnOpen = true
+                    onScanComplete(filesFound)
+                }) {
+                    Text("View All")
                 }
             }
         }
