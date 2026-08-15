@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.recoverx.model.FileCategory
+import com.example.recoverx.model.DocumentType
 
 @Composable
 fun FileThumbnail(
@@ -61,7 +62,7 @@ fun FileThumbnail(
                 imageVector = when (category) {
                     FileCategory.PHOTO -> Icons.Filled.Image
                     FileCategory.VIDEO -> Icons.Filled.Videocam
-                    FileCategory.DOCUMENT -> Icons.Filled.Description
+                    FileCategory.DOCUMENT -> Icons.Filled.Description // per-type icon set via documentType below if needed
                 },
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary

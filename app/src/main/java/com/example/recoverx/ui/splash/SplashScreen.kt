@@ -1,105 +1,115 @@
 package com.example.recoverx.ui.splash
 
+import androidx.compose.animation.core.EaseInOutQuad
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
-import kotlin.math.cos
-import kotlin.math.sin
 
-private val SplashBackground = Color(0xFF0A0B14)
-private val GlowPrimary = Color(0xFF7B61FF)
-private val GlowSecondary = Color(0xFF5B8DEF)
+private val SplashBackground = Color(0xFF17181F)
+private val BallColor = Color(0xFFC94F4F)
+private val BarColor = Color(0xFF9A9CB0)
 
 @Composable
 fun SplashScreen(onFinished: () -> Unit) {
-    val infiniteTransition = rememberInfiniteTransition(label = "splashMorph")
-    val morphPhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "morphPhase"
-    )
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.05f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-
     LaunchedEffect(Unit) {
-        delay(1300)
+        delay(1200) // no artificial multi-second delay
         onFinished()
     }
 
-    Canvas(modifier = Modifier.fillMaxSize().background(SplashBackground)) {
-        drawMorphingBlob(phase = morphPhase, scale = pulse)
+    Box(
+        modifier = Modifier.fillMaxSize().background(SplashBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            BouncingBall()
+            Spacer(modifier = Modifier.height(18.dp))
+            MovingBars()
+        }
     }
 }
 
-private fun DrawScope.drawMorphingBlob(phase: Float, scale: Float) {
-    val center = Offset(size.width / 2f, size.height / 2f)
-    val baseRadius = size.minDimension * 0.16f * scale
-    val points = 8
-    val path = Path()
-
-    for (i in 0..points) {
-        val angle = (2 * Math.PI * i / points).toFloat()
-        val wobble = sin(angle * 3 + phase) * 0.18f + cos(angle * 2 - phase) * 0.12f
-        val r = baseRadius * (1f + wobble)
-        val x = center.x + r * cos(angle)
-        val y = center.y + r * sin(angle)
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    path.close()
-
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(GlowPrimary.copy(alpha = 0.35f), Color.Transparent),
-            center = center,
-            radius = baseRadius * 3.2f
+@Composable
+private fun BouncingBall() {
+    val transition = rememberInfiniteTransition(label = "ballBounce")
+    val bounce by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 550, easing = EaseInOutQuad),
+            repeatMode = RepeatMode.Reverse
         ),
-        radius = baseRadius * 3.2f,
-        center = center
+        label = "bounce"
     )
+    // bounce: 0 = up position, 1 = down position (near the bars)
+    val offsetY = (1f - kotlin.math.sin(bounce * Math.PI).toFloat()) * 0f // unused, kept simple below
+    val translateY = (bounce * 22).dp
 
-    drawPath(
-        path = path,
-        brush = Brush.linearGradient(
-            colors = listOf(GlowPrimary, GlowSecondary),
-            start = Offset(center.x - baseRadius, center.y - baseRadius),
-            end = Offset(center.x + baseRadius, center.y + baseRadius)
+    Box(
+        modifier = Modifier
+            .height(30.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = translateY)
+                .size(14.dp)
+                .clip(CircleShape)
+                .background(BallColor)
         )
-    )
+    }
+}
 
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.White.copy(alpha = 0.25f), Color.Transparent),
-            center = center,
-            radius = baseRadius * 0.6f
-        ),
-        radius = baseRadius * 0.6f,
-        center = center
-    )
+@Composable
+private fun MovingBars() {
+    val transition = rememberInfiniteTransition(label = "bars")
+    val bars = listOf(0, 150, 300) // staggered start delays per bar
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        bars.forEachIndexed { index, delayMs ->
+            val heightFraction by transition.animateFloat(
+                initialValue = 0.35f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 550, delayMillis = delayMs, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "bar$index"
+            )
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height((14 * heightFraction).dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(BarColor)
+            )
+            if (index != bars.lastIndex) {
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+        }
+    }
 }

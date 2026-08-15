@@ -66,6 +66,26 @@ fun SettingsScreen() {
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+        SectionTitle("Scan Result View")
+        SettingsCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = AppSettings.resultViewMode.value == com.example.recoverx.model.ResultViewMode.LIST,
+                    onClick = { AppSettings.resultViewMode.value = com.example.recoverx.model.ResultViewMode.LIST },
+                    label = { Text("List View") }
+                )
+                FilterChip(
+                    selected = AppSettings.resultViewMode.value == com.example.recoverx.model.ResultViewMode.GRID,
+                    onClick = { AppSettings.resultViewMode.value = com.example.recoverx.model.ResultViewMode.GRID },
+                    label = { Text("Gallery / Grid View") }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
         SectionTitle("Scan Settings")
         SettingsCard {
             SettingsSwitchRow("Images", AppSettings.scanImages)

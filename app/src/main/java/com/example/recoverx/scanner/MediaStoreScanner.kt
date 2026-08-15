@@ -52,20 +52,39 @@ object MediaStoreScanner {
             0
         }
     }
-
     private fun countRows(context: Context, uri: Uri, trashed: Boolean, documentsOnly: Boolean = false): Int {
         val (selection, args) = buildSelection(trashed, documentsOnly)
         val queryUri = if (trashed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             uri.buildUpon().appendQueryParameter(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY.toString()).build()
         } else uri
+        // Count is now derived the SAME way the actual list query is built (see scanDocuments),
+        // so the header count and the rendered result list can never drift apart again.
         return context.contentResolver.query(queryUri, arrayOf(MediaStore.MediaColumns._ID), selection, args, null)
             ?.use { it.count } ?: 0
     }
 
     private fun buildSelection(trashed: Boolean, documentsOnly: Boolean): Pair<String?, Array<String>?> {
         if (documentsOnly) {
-            return "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?" to
+            // MediaStore only auto-classifies a narrow set of mime types as MEDIA_TYPE_DOCUMENT.
+            // Plain-text, zip/archive, and some office formats often land in MEDIA_TYPE_NONE and get
+            // silently dropped, which is what caused "Documents: 5" to show 0 results. We now match
+            // on the known document extensions/MIME prefixes directly instead of relying solely on
+            // MEDIA_TYPE_DOCUMENT.
+            val mimePrefixes = arrayOf(
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument%",
+                "application/vnd.ms-excel",
+                "application/vnd.ms-powerpoint",
+                "text/plain",
+                "application/zip",
+                "application/x-zip-compressed"
+            )
+            val clauses = mimePrefixes.joinToString(" OR ") { "${MediaStore.Files.FileColumns.MIME_TYPE} LIKE ?" }
+            val selection = "($clauses) OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+            val args = mimePrefixes.map { if (it.endsWith("%")) it else "$it%" }.toTypedArray() +
                     arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_DOCUMENT.toString())
+            return selection to args
         }
         return null to null
     }
@@ -110,9 +129,15 @@ object MediaStoreScanner {
                 results, scanned, onProgress
             )
         }
+        // Merge duplicates that surfaced through more than one source (MediaStore + SAF, etc).
+        // Keep the entry with the larger size (fuller/original copy over a thumbnail-sized dupe).
+        val deduped = results
+            .groupBy { it.dedupeKey.ifBlank { it.id } }
+            .map { (_, group) -> group.maxByOrNull { it.sizeBytes } ?: group.first() }
+
         // চূড়ান্ত নিশ্চিতভাবে একবার সঠিক ফাইনাল কাউন্ট পাঠানো
-        onProgress(results.size, results.size)
-        results
+        onProgress(deduped.size, deduped.size)
+        deduped
     }
 
     private fun safeScanSafFolders(
@@ -272,7 +297,13 @@ object MediaStoreScanner {
                             category = category,
                             confidence = if (trashed) RecoveryConfidence.TRASHED else RecoveryConfidence.ON_DEVICE,
                             uriString = ContentUris.withAppendedId(baseUri, id).toString(),
-                            dateAddedLabel = formatDate(dateAdded)
+                            dateAddedLabel = formatDate(dateAdded),
+                            liveStatus = if (trashed) com.example.recoverx.model.LiveStatus.RECOVERABLE
+                            else com.example.recoverx.model.LiveStatus.LIVE,
+                            confidenceLevel = if (trashed) com.example.recoverx.model.ConfidenceLevel.HIGH
+                            else com.example.recoverx.model.ConfidenceLevel.MEDIUM,
+                            sizeBytes = size,
+                            dedupeKey = "$name-$size"
                         )
                     )
                 } catch (rowError: Exception) {
@@ -300,22 +331,30 @@ object MediaStoreScanner {
             MediaStore.Files.FileColumns._ID,
             MediaStore.Files.FileColumns.DISPLAY_NAME,
             MediaStore.Files.FileColumns.SIZE,
-            MediaStore.Files.FileColumns.DATE_ADDED
+            MediaStore.Files.FileColumns.DATE_ADDED,
+            MediaStore.Files.FileColumns.MIME_TYPE
         )
-        val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
-        val args = arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_DOCUMENT.toString())
+        val (selection, args) = buildSelection(trashed = false, documentsOnly = true)
 
         context.contentResolver.query(uri, projection, selection, args, "${MediaStore.Files.FileColumns.DATE_ADDED} DESC")?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
-            val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_ADDED)
+            // getColumnIndex (not -OrThrow) so a missing/renamed column on a given OEM doesn't
+            // throw and silently wipe out every document row — count and list must stay in sync.
+            val idCol = cursor.getColumnIndex(MediaStore.Files.FileColumns._ID)
+            val nameCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DISPLAY_NAME)
+            val sizeCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.SIZE)
+            val dateCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.DATE_ADDED)
+            val mimeCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.MIME_TYPE)
+            if (idCol < 0 || nameCol < 0) {
+                Log.w(TAG, "Document cursor missing required columns, skip করা হলো")
+                return@use
+            }
             while (cursor.moveToNext()) {
                 try {
                     val id = cursor.getLong(idCol)
                     val name = cursor.getString(nameCol) ?: "Unknown document"
-                    val size = cursor.getLong(sizeCol)
-                    val dateAdded = cursor.getLong(dateCol)
+                    val size = if (sizeCol >= 0) cursor.getLong(sizeCol) else 0L
+                    val dateAdded = if (dateCol >= 0) cursor.getLong(dateCol) else 0L
+                    val mime = if (mimeCol >= 0) cursor.getString(mimeCol) else null
                     results.add(
                         ScannedFile(
                             id = "doc-$id",
@@ -324,7 +363,11 @@ object MediaStoreScanner {
                             category = FileCategory.DOCUMENT,
                             confidence = RecoveryConfidence.ON_DEVICE,
                             uriString = ContentUris.withAppendedId(uri, id).toString(),
-                            dateAddedLabel = formatDate(dateAdded)
+                            dateAddedLabel = formatDate(dateAdded),
+                            documentType = com.example.recoverx.model.detectDocumentType(name, mime),
+                            liveStatus = com.example.recoverx.model.LiveStatus.LIVE,
+                            sizeBytes = size,
+                            dedupeKey = "$name-$size"
                         )
                     )
                 } catch (rowError: Exception) {

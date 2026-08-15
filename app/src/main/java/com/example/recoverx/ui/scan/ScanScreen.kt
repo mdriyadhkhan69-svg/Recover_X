@@ -48,8 +48,9 @@ fun ScanScreen(
     var isComplete by remember { mutableStateOf(false) }
     var cancelled by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var currentSourceLabel by remember { mutableStateOf("") }
+    var inaccessibleLocations by remember { mutableStateOf(emptyList<String>()) }
     var retryTrigger by remember { mutableIntStateOf(0) }
-
     // Secure Folder-সহ যেকোনো accessible location manually add করার জন্য SAF picker।
     // Knox/encrypted storage bypass করে না — শুধু user explicitly grant করা tree-ই যোগ হয়।
     val addFolderLauncher = rememberLauncherForActivityResult(
@@ -83,23 +84,30 @@ fun ScanScreen(
             }
 
             val total = MediaStoreScanner.countTotal(context, includeImages, includeVideos, includeDocuments)
+                .coerceAtLeast(1)
 
-            val results = MediaStoreScanner.scan(
+            val outcome = com.example.recoverx.scanner.ScannerCoordinator.deepScan(
                 context = context,
                 includeImages = includeImages,
                 includeVideos = includeVideos,
                 includeDocuments = includeDocuments,
-                extraFolderUris = AppSettings.safFolderUris.value
-            ) { scanned, found ->
+                extraSafFolderUris = AppSettings.safFolderUris.value
+            ) { update ->
                 if (!cancelled) {
-                    filesScanned = scanned
-                    filesFound = found
-                    progress = (scanned.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                    filesScanned = update.scanned
+                    filesFound = update.found
+                    currentSourceLabel = update.currentSourceLabel
+                    // Real progress only where a known total exists (MediaStore pass); filesystem/
+                    // thumbnail passes don't have a reliable upfront total, so we don't fake a
+                    // percentage for them — the bar simply holds while the label communicates status.
+                    progress = (update.scanned.toFloat() / total.toFloat()).coerceIn(0f, 0.98f)
                 }
             }
 
             if (!cancelled) {
-                ScanResultsHolder.results = results
+                ScanResultsHolder.results = outcome.results
+                inaccessibleLocations = outcome.inaccessibleLocations
+                filesFound = outcome.results.size
                 progress = 1f
                 isComplete = true
             }
@@ -183,12 +191,27 @@ fun ScanScreen(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary
         )
-
+        if (currentSourceLabel.isNotBlank() && !isComplete) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = currentSourceLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+            )
+        }
+        if (isComplete && inaccessibleLocations.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Some locations could not be accessed (${inaccessibleLocations.size})",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+            )
+        }
         Spacer(modifier = Modifier.height(40.dp))
 
         if (!isComplete) {
             OutlinedButton(onClick = { addFolderLauncher.launch(null) }) {
-                Text("Add Folder (Secure Folder ইত্যাদি)")
+                Text("add folder")
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(onClick = {
