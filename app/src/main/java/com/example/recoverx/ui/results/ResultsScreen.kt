@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -27,6 +29,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -51,6 +56,7 @@ import com.example.recoverx.model.ScannedFile
 import com.example.recoverx.ui.common.FastScrollbar
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clip
 private enum class ResultTab(val label: String) { ALL("All"), PHOTOS("Photos"), VIDEOS("Videos"), DOCS("Documents") }
 
@@ -64,12 +70,17 @@ fun ResultsScreen(
     var viewMode by AppSettings.resultViewMode
     // Opens showing everything by default (fast, no extra wait after scan). Tapping the filter
     // chip below applies the recoverable-only filter instantly, in-memory, no rescan needed.
-    var showAllFiles by remember { mutableStateOf(true) }
+    // RAW vs FILTERED state — filteredIds == null means "showing every discovered result";
+    // once the user presses Filter, filteredIds holds the ids that survived filtering.
+    var filteredIds by remember { mutableStateOf<Set<String>?>(null) }
+    var isFiltering by remember { mutableStateOf(false) }
+    var filterProgress by remember { mutableFloatStateOf(0f) }
+    val filterScope = rememberCoroutineScope()
 
-    val curated by remember(showAllFiles, files) {
+    val curated by remember(filteredIds, files) {
         derivedStateOf {
-            if (showAllFiles) files
-            else files.filter { it.liveStatus != com.example.recoverx.model.LiveStatus.LIVE }
+            val ids = filteredIds
+            if (ids == null) files else files.filter { it.id in ids }
         }
     }
     // Filtering is derived straight from `curated`, and the header count below is derived from
@@ -86,11 +97,37 @@ fun ResultsScreen(
     }
 
     val selectedCount by remember { derivedStateOf { files.count { it.isSelected } } }
-
     fun updateFile(id: String, checked: Boolean) {
         val updated = files.map { if (it.id == id) it.copy(isSelected = checked) else it }
         files = updated
         com.example.recoverx.model.ScanResultsHolder.results = updated
+    }
+
+    fun runFilter() {
+        filterScope.launch {
+            isFiltering = true
+            filterProgress = 0f
+            val snapshot = files
+            val chunkSize = (snapshot.size / 10).coerceAtLeast(1)
+            val survivedIds = mutableSetOf<String>()
+            var index = 0
+            while (index < snapshot.size) {
+                val end = (index + chunkSize).coerceAtMost(snapshot.size)
+                for (i in index until end) {
+                    val f = snapshot[i]
+                    if (f.liveStatus != com.example.recoverx.model.LiveStatus.LIVE) {
+                        survivedIds.add(f.id)
+                    }
+                }
+                index = end
+                filterProgress = (index.toFloat() / snapshot.size.toFloat()).coerceIn(0f, 1f)
+                delay(60)
+            }
+            filteredIds = survivedIds
+            filterProgress = 1f
+            delay(150)
+            isFiltering = false
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -100,8 +137,8 @@ fun ResultsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (showAllFiles) "${files.size} files found"
-                else "${curated.size} recoverable of ${files.size} found",
+                text = if (filteredIds == null) "${files.size} Files Found"
+                else "${curated.size} Recoverable Files",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -127,20 +164,22 @@ fun ResultsScreen(
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            androidx.compose.material3.FilterChip(
-                selected = showAllFiles,
-                onClick = { showAllFiles = true },
-                label = { Text("All") }
+            Text(
+                text = if (filteredIds == null) "Showing all discovered results"
+                else "Showing recoverable results only",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
-            androidx.compose.material3.FilterChip(
-                selected = !showAllFiles,
-                onClick = { showAllFiles = false },
-                label = { Text("Recoverable Only") }
-            )
+            OutlinedButton(
+                onClick = { runFilter() },
+                enabled = !isFiltering
+            ) {
+                Text("Filter")
+            }
         }
-
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (viewMode == ResultViewMode.LIST) {
                 val listState = rememberLazyListState()
@@ -197,6 +236,37 @@ fun ResultsScreen(
                         onScrollToIndex = { index -> scope.launch { gridState.scrollToItem(index) } },
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight()
                     )
+                }
+            }
+
+            if (isFiltering) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            progress = { filterProgress },
+                            modifier = Modifier.size(96.dp),
+                            strokeWidth = 8.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Filtering Results...",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${(filterProgress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
         }

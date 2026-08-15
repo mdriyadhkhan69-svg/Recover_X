@@ -229,9 +229,6 @@ fun ScanScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = {
-                    // Always open showing everything found immediately — filtering to
-                    // recoverable-only happens instantly inside ResultsScreen without rescanning.
-                    com.example.recoverx.model.ScanResultsHolder.showAllOnOpen = true
                     onScanComplete(filesFound)
                 }) {
                     Text("View Results")
