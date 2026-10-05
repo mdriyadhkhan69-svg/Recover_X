@@ -206,7 +206,12 @@ object MediaStoreScanner {
                             category = category,
                             confidence = RecoveryConfidence.ON_DEVICE,
                             uriString = child.uri.toString(),
-                            dateAddedLabel = formatDate(child.lastModified() / 1000)
+                            dateAddedLabel = formatDate(child.lastModified() / 1000),
+                            documentType = com.example.recoverx.model.detectDocumentType(child.name ?: "", child.type),
+                            liveStatus = com.example.recoverx.model.LiveStatus.POSSIBLY_RECOVERABLE,
+                            sizeBytes = child.length(),
+                            dedupeKey = "${child.name}-${child.length()}",
+                            source = com.example.recoverx.model.ScanSource.SAF
                         )
                     )
                 }

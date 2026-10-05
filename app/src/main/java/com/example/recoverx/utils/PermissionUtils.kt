@@ -20,6 +20,10 @@ object PermissionUtils {
         }
     }
 
+    /** Below Android 11 there is no All Files Access concept, so it counts as available. */
+    fun hasAllFilesAccess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || android.os.Environment.isExternalStorageManager()
+
     fun hasAllPermissions(context: Context): Boolean {
         return requiredPermissions().all { permission ->
             ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED

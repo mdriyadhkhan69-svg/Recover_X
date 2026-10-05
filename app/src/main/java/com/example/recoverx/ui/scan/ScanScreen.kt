@@ -125,7 +125,8 @@ fun ScanScreen(
                 includeImages = includeImages,
                 includeVideos = includeVideos,
                 includeDocuments = includeDocuments,
-                extraSafFolderUris = AppSettings.safFolderUris.value
+                extraSafFolderUris = AppSettings.safFolderUris.value,
+                deep = com.example.recoverx.scanner.ScanModeHolder.deep
             ) { update ->
                 if (!cancelled) {
                     filesScanned = update.scanned
@@ -144,6 +145,8 @@ fun ScanScreen(
                 progress = 1f
                 isComplete = true
             }
+        } catch (e: com.example.recoverx.scanner.ScanNotAuthorizedException) {
+            errorMessage = "Scan not authorized. Go back and start the scan again."
         } catch (e: SecurityException) {
             errorMessage = "No Storage access permission. Go settings give permission try again."
         } catch (e: Exception) {
@@ -285,7 +288,7 @@ fun ScanScreen(
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "$filesFound files found on your device.",
+                    text = "$filesFound recoverable candidates found.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )

@@ -110,19 +110,20 @@ object FileSystemScanner {
                     ext in DOC_EXT -> FileCategory.DOCUMENT
                     else -> null
                 }
-                if (category != null && child.length() > 0) {
-                    val isLive = liveMediaPaths.contains(child.absolutePath)
+                if (category != null && child.length() > 0 &&
+                    isRecoveryCandidatePath(child) && !liveMediaPaths.contains(child.absolutePath)
+                ) {
                     results.add(
                         ScannedFile(
-                            id = "fs-${child.absolutePath.hashCode()}",
-                            name = child.name,
+                            id = "fs-${child.absolutePath}",
+                            name = cleanName(child.name),
                             sizeLabel = formatSize(child.length()),
                             category = category,
                             confidence = RecoveryConfidence.ON_DEVICE,
                             uriString = Uri.fromFile(child).toString(),
                             dateAddedLabel = formatDate(child.lastModified()),
                             documentType = if (category == FileCategory.DOCUMENT) detectDocumentType(child.name, null) else DocumentType.OTHER,
-                            liveStatus = if (isLive) LiveStatus.LIVE else LiveStatus.POSSIBLY_RECOVERABLE,
+                            liveStatus = LiveStatus.POSSIBLY_RECOVERABLE,
                             sizeBytes = child.length(),
                             dedupeKey = "${child.name}-${child.length()}",
                             source = ScanSource.FILESYSTEM
@@ -139,6 +140,28 @@ object FileSystemScanner {
         }
         return scanned
     }
+
+    private val TRASH_DIR_HINTS = listOf(
+        "trash", "recycle", ".trashed", "lost.dir", ".recently", "deleted"
+    )
+    private val TRASH_PREFIX = Regex("^\\.(trashed|pending)-\\d+-")
+
+    /** A file on disk is only a recovery candidate if it lives in a trash-like place. */
+    private fun isRecoveryCandidatePath(file: File): Boolean {
+        val n = file.name.lowercase()
+        if (n.startsWith(".trashed-") || n.startsWith(".pending-")) return true
+        var p = file.parentFile
+        var hops = 0
+        while (p != null && hops < 6) {
+            val pn = p.name.lowercase()
+            if (TRASH_DIR_HINTS.any { pn.contains(it) }) return true
+            p = p.parentFile
+            hops++
+        }
+        return false
+    }
+
+    private fun cleanName(name: String): String = name.replace(TRASH_PREFIX, "").ifBlank { name }
 
     private fun formatSize(bytes: Long): String {
         val kb = bytes / 1024.0

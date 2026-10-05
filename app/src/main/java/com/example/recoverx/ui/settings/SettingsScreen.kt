@@ -106,6 +106,12 @@ fun SettingsScreen() {
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+        SectionTitle("Security")
+        SettingsCard {
+            ScanPasswordSection()
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
         SectionTitle("About")
         SettingsCard {
             Text(

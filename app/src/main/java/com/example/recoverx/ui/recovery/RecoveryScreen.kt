@@ -66,8 +66,11 @@ fun RecoveryScreen(
                 permissionLauncher.launch(
                     IntentSenderRequest.Builder(result.intentSender).build()
                 )
+                val completes = (result as? RecoveryResult.NeedsPermission)?.completesRecovery == true
                 val granted = deferred.await()
-                result = if (granted) {
+                result = if (granted && completes) {
+                    RecoveryResult.Success(file.uriString)
+                } else if (granted) {
                     RecoveryEngine.recover(context, file)
                 } else {
                     RecoveryResult.Failed("Permission দেওয়া হয়নি")

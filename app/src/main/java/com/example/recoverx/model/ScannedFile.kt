@@ -38,7 +38,8 @@ data class ScannedFile(
     val confidenceLevel: ConfidenceLevel = ConfidenceLevel.MEDIUM,
     val sizeBytes: Long = 0L,
     val dedupeKey: String = "",
-    val source: ScanSource = ScanSource.MEDIASTORE
+    val source: ScanSource = ScanSource.MEDIASTORE,
+    val fingerprint: String = ""
 ) {
     val recoveryStatus: String
         get() = when (confidence) {

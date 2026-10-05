@@ -25,7 +25,7 @@ object DeduplicationEngine {
 
     fun merge(files: List<ScannedFile>): List<ScannedFile> {
         return files
-            .groupBy { it.dedupeKey.ifBlank { it.id } }
+            .groupBy { it.fingerprint.ifBlank { it.dedupeKey.ifBlank { it.id } } }
             .map { (_, group) -> pickBest(group) }
     }
 

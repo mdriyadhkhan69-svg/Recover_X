@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
 
 sealed class RecoveryResult {
     data class Success(val recoveredUri: String? = null) : RecoveryResult()
-    data class NeedsPermission(val intentSender: IntentSender) : RecoveryResult()
+    data class NeedsPermission(val intentSender: IntentSender, val completesRecovery: Boolean = false) : RecoveryResult()
     data class Failed(val reason: String) : RecoveryResult()
 }
 
@@ -46,7 +46,13 @@ object RecoveryEngine {
             // Android অনেক সময় owner app না হলে user-এর explicit confirmation চায়
             RecoveryResult.NeedsPermission(e.userAction.actionIntent.intentSender)
         } catch (e: SecurityException) {
-            RecoveryResult.Failed("Permission নেই এই ফাইল restore করার জন্য")
+            try {
+                // Not the owner: the system must perform the untrash after user consent.
+                val pi = MediaStore.createTrashRequest(context.contentResolver, listOf(uri), false)
+                RecoveryResult.NeedsPermission(pi.intentSender, completesRecovery = true)
+            } catch (e2: Exception) {
+                RecoveryResult.Failed("Permission নেই এই ফাইল restore করার জন্য")
+            }
         } catch (e: Exception) {
             RecoveryResult.Failed(e.message ?: "Unknown error")
         }
