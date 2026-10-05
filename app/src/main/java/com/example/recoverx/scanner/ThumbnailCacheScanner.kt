@@ -26,24 +26,28 @@ object ThumbnailCacheScanner {
     fun scan(
         context: Context,
         storageRoots: List<File>,
-        onProgress: (String) -> Unit
+        onProgress: (count: Int, label: String) -> Unit
     ): List<ScannedFile> {
         val results = mutableListOf<ScannedFile>()
 
         // App's own cache — always legitimately accessible.
         context.externalCacheDir?.let { scanDir(it, results) }
         context.cacheDir.let { scanDir(it, results) }
+        onProgress(results.size, "Scanning app cache...")
 
         // Shallow probe (2 levels) of known thumbnail folder names under each discovered root;
         // most are inaccessible under modern scoped storage and will simply be skipped.
+        // Reports live count before AND after each root so the caller's progress/found count
+        // keeps moving through this phase instead of freezing until the whole phase finishes.
         for (root in storageRoots) {
-            onProgress("Scanning thumbnails in ${root.name}...")
+            onProgress(results.size, "Scanning thumbnails in ${root.name}...")
             THUMB_DIR_NAMES.forEach { name ->
                 val candidate = File(root, name)
                 if (candidate.exists() && candidate.canRead()) {
                     scanDir(candidate, results, maxDepth = 2)
                 }
             }
+            onProgress(results.size, "Scanning thumbnails in ${root.name}...")
         }
         return results
     }
@@ -57,6 +61,7 @@ object ThumbnailCacheScanner {
                     scanDir(child, results, depth + 1, maxDepth)
                     continue
                 }
+                @Suppress("UNUSED_EXPRESSION") Unit
                 val ext = child.extension.lowercase()
                 if (ext !in setOf("jpg", "jpeg", "png", "webp")) continue
                 if (child.length() <= 0) continue

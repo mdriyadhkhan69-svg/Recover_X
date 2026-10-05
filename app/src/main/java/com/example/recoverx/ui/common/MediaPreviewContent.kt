@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,10 +90,34 @@ fun MediaPreviewContent(
                     )
                 }
                 category == FileCategory.VIDEO -> {
+                    // VideoView wraps a MediaPlayer internally. Without an explicit release on
+                    // dispose, each Preview -> Back cycle used to leak that MediaPlayer/decoder
+                    // (and its native surface/codec buffers) instead of freeing it. Repeating
+                    // this dozens of times while browsing a large result set eventually exhausted
+                    // native decoder/codec resources and crashed the app. This tracks the exact
+                    // VideoView instance created for THIS uri and tears it down when the
+                    // composable leaves composition (Back) or the uri changes, guaranteeing only
+                    // one live MediaPlayer exists for this screen at a time.
+                    val videoViewRef = remember(uri) { mutableStateOf<VideoView?>(null) }
+                    DisposableEffect(uri) {
+                        onDispose {
+                            videoViewRef.value?.apply {
+                                setOnPreparedListener(null)
+                                setOnErrorListener(null)
+                                try {
+                                    stopPlayback()
+                                } catch (e: Exception) {
+                                    // best-effort cleanup; view is being torn down regardless
+                                }
+                            }
+                            videoViewRef.value = null
+                        }
+                    }
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { ctx ->
                             VideoView(ctx).apply {
+                                videoViewRef.value = this
                                 setOnErrorListener { _, _, _ -> previewFailed = true; true }
                                 setVideoURI(uri)
                                 setOnPreparedListener { it.isLooping = true; start() }

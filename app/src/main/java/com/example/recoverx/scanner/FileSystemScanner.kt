@@ -27,7 +27,7 @@ object FileSystemScanner {
 
     private const val TAG = "FileSystemScanner"
     private const val MAX_DEPTH = 40
-    private const val PROGRESS_BATCH = 40
+    private const val PROGRESS_BATCH = 12
 
     private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif")
     private val VIDEO_EXT = setOf("mp4", "mov", "3gp", "mkv", "avi")
@@ -93,6 +93,13 @@ object FileSystemScanner {
         for (child in children) {
             try {
                 if (child.isDirectory) {
+                    // Count the directory itself as "scanned" too — real IO/traversal time is
+                    // spent here even when it contains no matching files, so progress must move
+                    // through it instead of freezing until matching files are found deeper down.
+                    scanned++
+                    if (scanned % PROGRESS_BATCH == 0) {
+                        onProgress(scanned, results.size, "Scanning ${child.name}...")
+                    }
                     scanned = walk(child, depth + 1, visitedCanonical, liveMediaPaths, results, scanned, onProgress, onSkipped)
                     continue
                 }

@@ -58,7 +58,20 @@ import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 private enum class ResultTab(val label: String) { ALL("All"), PHOTOS("Photos"), VIDEOS("Videos"), DOCS("Documents") }
+
+// Per-category counts for the top tab bar. Must always reflect whatever result set is
+// currently displayed: raw discovered results before Filter, filtered results after the
+// user presses Filter on the Scanning page. Never a fixed raw snapshot.
+private data class ResultTabCounts(val all: Int, val photos: Int, val videos: Int, val docs: Int) {
+    fun forTab(tab: ResultTab): Int = when (tab) {
+        ResultTab.ALL -> all
+        ResultTab.PHOTOS -> photos
+        ResultTab.VIDEOS -> videos
+        ResultTab.DOCS -> docs
+    }
+}
 
 @Composable
 fun ResultsScreen(
@@ -81,10 +94,6 @@ fun ResultsScreen(
             }
         )
     }
-    var isFiltering by remember { mutableStateOf(false) }
-    var filterProgress by remember { mutableFloatStateOf(0f) }
-    val filterScope = rememberCoroutineScope()
-
     val curated by remember(filteredIds, files) {
         derivedStateOf {
             val ids = filteredIds
@@ -105,39 +114,32 @@ fun ResultsScreen(
     }
 
     val selectedCount by remember { derivedStateOf { files.count { it.isSelected } } }
+
+    // Computed directly from the raw `files` list — a cheap single pass over already-in-memory
+    // ScannedFile objects, so this is available immediately on open with no extra scan/filter work.
+    // Recomputed from `curated` — which already resolves to raw `files` when no filter is
+    // applied, or to the filtered subset once the Scanning-page Filter has run — so these
+    // counts always match what's actually on screen, never a stale raw snapshot.
+    val tabCounts by remember(curated) {
+        derivedStateOf {
+            var photos = 0
+            var videos = 0
+            var docs = 0
+            curated.forEach { f ->
+                when (f.category) {
+                    FileCategory.PHOTO -> photos++
+                    FileCategory.VIDEO -> videos++
+                    FileCategory.DOCUMENT -> docs++
+                }
+            }
+            ResultTabCounts(all = curated.size, photos = photos, videos = videos, docs = docs)
+        }
+    }
     fun updateFile(id: String, checked: Boolean) {
         val updated = files.map { if (it.id == id) it.copy(isSelected = checked) else it }
         files = updated
         com.example.recoverx.model.ScanResultsHolder.results = updated
     }
-
-    fun runFilter() {
-        filterScope.launch {
-            isFiltering = true
-            filterProgress = 0f
-            val snapshot = files
-            val chunkSize = (snapshot.size / 10).coerceAtLeast(1)
-            val survivedIds = mutableSetOf<String>()
-            var index = 0
-            while (index < snapshot.size) {
-                val end = (index + chunkSize).coerceAtMost(snapshot.size)
-                for (i in index until end) {
-                    val f = snapshot[i]
-                    if (f.liveStatus != com.example.recoverx.model.LiveStatus.LIVE) {
-                        survivedIds.add(f.id)
-                    }
-                }
-                index = end
-                filterProgress = (index.toFloat() / snapshot.size.toFloat()).coerceIn(0f, 1f)
-                delay(60)
-            }
-            filteredIds = survivedIds
-            filterProgress = 1f
-            delay(150)
-            isFiltering = false
-        }
-    }
-
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -165,7 +167,25 @@ fun ResultsScreen(
                 Tab(
                     selected = selectedTab == tab,
                     onClick = { selectedTab = tab },
-                    text = { Text(tab.label) }
+                    text = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = tab.label,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                            Text(
+                                text = "${tabCounts.forTab(tab)}",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
                 )
             }
         }
@@ -181,12 +201,6 @@ fun ResultsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
-            OutlinedButton(
-                onClick = { runFilter() },
-                enabled = !isFiltering
-            ) {
-                Text("Filter")
-            }
         }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (viewMode == ResultViewMode.LIST) {
@@ -247,36 +261,6 @@ fun ResultsScreen(
                 }
             }
 
-            if (isFiltering) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(
-                            progress = { filterProgress },
-                            modifier = Modifier.size(96.dp),
-                            strokeWidth = 8.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Filtering Results...",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "${(filterProgress * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
         }
         if (selectedCount > 0) {
             Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {

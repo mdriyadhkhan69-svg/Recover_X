@@ -1,5 +1,7 @@
 package com.example.recoverx.ui.scan
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +35,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.recoverx.model.AppSettings
 import com.example.recoverx.model.ScanResultsHolder
-import com.example.recoverx.scanner.MediaStoreScanner
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -119,9 +120,6 @@ fun ScanScreen(
                 return@LaunchedEffect
             }
 
-            val total = MediaStoreScanner.countTotal(context, includeImages, includeVideos, includeDocuments)
-                .coerceAtLeast(1)
-
             val outcome = com.example.recoverx.scanner.ScannerCoordinator.deepScan(
                 context = context,
                 includeImages = includeImages,
@@ -133,13 +131,12 @@ fun ScanScreen(
                     filesScanned = update.scanned
                     filesFound = update.found
                     currentSourceLabel = update.currentSourceLabel
-                    // Real progress only where a known total exists (MediaStore pass); filesystem/
-                    // thumbnail passes don't have a reliable upfront total, so we don't fake a
-                    // percentage for them — the bar simply holds while the label communicates status.
-                    progress = (update.scanned.toFloat() / total.toFloat()).coerceIn(0f, 0.98f)
+                    // Percent now comes directly from ScannerCoordinator, which tracks real,
+                    // continuously-moving progress across every phase (MediaStore, filesystem,
+                    // thumbnail/cache) — the bar no longer freezes at a cap while later phases work.
+                    progress = update.percent.coerceIn(0f, 1f)
                 }
             }
-
             if (!cancelled) {
                 ScanResultsHolder.results = outcome.results
                 inaccessibleLocations = outcome.inaccessibleLocations
@@ -148,9 +145,9 @@ fun ScanScreen(
                 isComplete = true
             }
         } catch (e: SecurityException) {
-            errorMessage = "Storage access permission নেই। Settings থেকে permission দিয়ে আবার চেষ্টা করো।"
+            errorMessage = "No Storage access permission. Go settings give permission try again."
         } catch (e: Exception) {
-            errorMessage = "Scan করতে সমস্যা হয়েছে। আবার চেষ্টা করো।"
+            errorMessage = "Faced scanning problem. Try again."
         }
     }
 
@@ -171,7 +168,7 @@ fun ScanScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Scan ব্যর্থ হয়েছে",
+                text = "Failed to Scanning",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -183,7 +180,7 @@ fun ScanScreen(
             )
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = { retryTrigger++ }) {
-                Text("আবার চেষ্টা করো")
+                Text("Try again.")
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(onClick = onCancel) {
@@ -200,21 +197,29 @@ fun ScanScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
+        // Visually animates every real progress update from the scanner into a smooth
+        // transition instead of a hard jump — purely a UI-level tween, no fake/delayed
+        // progress and no change to the underlying scan speed or completion timing.
+        val animatedProgress by animateFloatAsState(
+            targetValue = progress,
+            animationSpec = tween(durationMillis = 300),
+            label = "scanProgress"
+        )
+
         Box(contentAlignment = Alignment.Center) {
             CircularProgressIndicator(
-                progress = { progress },
+                progress = { animatedProgress },
                 modifier = Modifier.size(160.dp),
                 strokeWidth = 10.dp,
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
             Text(
-                text = "${(progress * 100).toInt()}%",
+                text = "${(animatedProgress * 100).toInt()}%",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onBackground
             )
         }
-
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
