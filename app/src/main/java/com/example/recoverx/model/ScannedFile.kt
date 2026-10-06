@@ -31,6 +31,7 @@ enum class RecoverySourceKind(val label: String, val isOriginal: Boolean) {
     FILESYSTEM_TRASH("Filesystem Trash", true),
     ORPHAN_FILE("Orphaned File", true),
     RECOVERED_THUMBNAIL("Recovered Thumbnail (preview only)", false),
+    CARVED("Carved from raw storage (root)", true),
     UNKNOWN("Unknown", true)
 }
 
@@ -64,6 +65,7 @@ data class ScannedFile(
                 RecoverySourceKind.FILESYSTEM_TRASH -> "Filesystem trash entry"
                 RecoverySourceKind.ORPHAN_FILE -> "Orphaned file"
                 RecoverySourceKind.RECOVERED_THUMBNAIL -> "Thumbnail only — not the original"
+                RecoverySourceKind.CARVED -> "Carved from raw storage"
                 RecoverySourceKind.LIVE_EXISTING, RecoverySourceKind.UNKNOWN -> when (confidence) {
                     RecoveryConfidence.TRASHED -> "In trash — recoverable"
                     RecoveryConfidence.ON_DEVICE -> "Currently on device"

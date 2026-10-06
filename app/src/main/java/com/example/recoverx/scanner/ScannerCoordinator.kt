@@ -12,7 +12,7 @@ import com.example.recoverx.utils.PermissionUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-
+import kotlinx.coroutines.isActive
 data class ScanProgressUpdate(
     val scanned: Int,
     val found: Int,
@@ -73,6 +73,7 @@ object ScannerCoordinator {
             var roots = emptyList<StorageRootDiscovery.DiscoveredRoot>()
             var fsRan = false
             var thumbRan = false
+            var carveRan = false
 
             // ---- 1. MediaStore: current-media index + trash candidates (+ evidence-only SAF) ----
             onProgress(ScanProgressUpdate(0, 0, "Indexing current files...", 0f))
@@ -142,15 +143,26 @@ object ScannerCoordinator {
                     inaccessible.add("Thumbnail caches")
                     emptyList()
                 }
-                val knownIds = mediaResults.mapNotNull {
-                    Regex("^(?:img|vid|doc)-(\\d+)-(?:live|trash)$").find(it.id)?.groupValues?.get(1)
-                }.toHashSet()
-                candidates.addAll(
-                    thumbResults
-                        .filter { t -> t.name.substringBeforeLast('.') !in knownIds }
-                        .take(300)
-                        .map(tag)
-                )
+                candidates.addAll(thumbResults.take(1500).map(tag))
+                if (RootCarver.isRootAvailable()) {
+                    val device = RootCarver.findDevice()
+                    if (device != null) {
+                        onProgress(ScanProgressUpdate(totalScanned, candidates.size, "Root: carving raw storage (slow)...", THUMB_PHASE_END))
+                        val carved = try {
+                            RootCarver.carve(
+                                device, java.io.File(context.filesDir, "carved"),
+                                500, 12L * 1024 * 1024 * 1024, { !isActive }
+                            ) { bytes, found ->
+                                onProgress(ScanProgressUpdate(totalScanned, candidates.size + found, "Root: carving... ${bytes / 1048576} MB read", THUMB_PHASE_END))
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Root carve failed: ${e.message}")
+                            emptyList()
+                        }
+                        candidates.addAll(carved.map { RootCarver.toScanned(it) })
+                        carveRan = true
+                    }
+                }
                 onProgress(ScanProgressUpdate(totalScanned, candidates.size, "Remnant search finished", THUMB_PHASE_END))
             }
 
@@ -214,6 +226,12 @@ object ScannerCoordinator {
             } else {
                 SourceReport("Thumbnail / cache previews", SourceReport.State.NOT_RUN,
                     0, if (deep) "could not run" else "Deep Scan only")
+            }
+            reports += if (carveRan) {
+                SourceReport("Root raw-storage carving", SourceReport.State.CHECKED,
+                    clean.count { it.sourceKind == RecoverySourceKind.CARVED }, "JPEG only")
+            } else {
+                SourceReport("Root raw-storage carving", SourceReport.State.NOT_RUN, 0, "needs root")
             }
             val removable = roots.filter { it.isRemovable }
             reports += when {
