@@ -24,6 +24,16 @@ enum class LiveStatus {
 
 enum class ConfidenceLevel { HIGH, MEDIUM, LOW }
 
+/** WHY a result is considered recoverable. isOriginal=false means a preview, never the original file. */
+enum class RecoverySourceKind(val label: String, val isOriginal: Boolean) {
+    LIVE_EXISTING("Existing file", true),
+    MEDIASTORE_TRASH("MediaStore Trash", true),
+    FILESYSTEM_TRASH("Filesystem Trash", true),
+    ORPHAN_FILE("Orphaned File", true),
+    RECOVERED_THUMBNAIL("Recovered Thumbnail (preview only)", false),
+    UNKNOWN("Unknown", true)
+}
+
 data class ScannedFile(
     val id: String,
     val name: String,
@@ -39,12 +49,27 @@ data class ScannedFile(
     val sizeBytes: Long = 0L,
     val dedupeKey: String = "",
     val source: ScanSource = ScanSource.MEDIASTORE,
-    val fingerprint: String = ""
+    val fingerprint: String = "",
+    val sourceKind: RecoverySourceKind = RecoverySourceKind.UNKNOWN,
+    val evidence: String = "",
+    val mimeType: String? = null
 ) {
+    val isOriginalFile: Boolean
+        get() = sourceKind.isOriginal
+
     val recoveryStatus: String
-        get() = when (confidence) {
-            RecoveryConfidence.TRASHED -> "In trash — recoverable"
-            RecoveryConfidence.ON_DEVICE -> "Currently on device"
+        get() {
+            val base = when (sourceKind) {
+                RecoverySourceKind.MEDIASTORE_TRASH -> "In MediaStore trash — recoverable"
+                RecoverySourceKind.FILESYSTEM_TRASH -> "Filesystem trash entry"
+                RecoverySourceKind.ORPHAN_FILE -> "Orphaned file"
+                RecoverySourceKind.RECOVERED_THUMBNAIL -> "Thumbnail only — not the original"
+                RecoverySourceKind.LIVE_EXISTING, RecoverySourceKind.UNKNOWN -> when (confidence) {
+                    RecoveryConfidence.TRASHED -> "In trash — recoverable"
+                    RecoveryConfidence.ON_DEVICE -> "Currently on device"
+                }
+            }
+            return if (source == ScanSource.SD_CARD) "$base · SD card" else base
         }
 }
 

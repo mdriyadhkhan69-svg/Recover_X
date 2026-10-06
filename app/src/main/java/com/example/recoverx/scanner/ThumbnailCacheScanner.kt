@@ -1,89 +1,119 @@
 package com.example.recoverx.scanner
 
-import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Environment
+import com.example.recoverx.model.ConfidenceLevel
 import com.example.recoverx.model.FileCategory
 import com.example.recoverx.model.LiveStatus
 import com.example.recoverx.model.RecoveryConfidence
+import com.example.recoverx.model.RecoverySourceKind
 import com.example.recoverx.model.ScanSource
 import com.example.recoverx.model.ScannedFile
 import java.io.File
+import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Looks for recoverable evidence in app-accessible cache/thumbnail directories only — e.g. this
- * app's own cache dir and any world-readable ".thumbnails" folder still exposed under scoped
- * storage on the current device. Does NOT attempt to read other apps' private cache (not
- * accessible without root, which is explicitly out of scope). Results are always labeled
- * Thumbnail Recovery, never claimed as the original file.
+ * Finds cached image previews in .thumbnails-style folders readable by this app.
+ * Fixes vs. the old version:
+ *  - probes DCIM/.thumbnails, Pictures/.thumbnails, etc. (not only <root>/.thumbnails)
+ *  - no longer scans this app's own cache (that only held previews the app itself made)
+ *  - accepts extension-less thumbnails by header bytes
+ * Every result is RECOVERED_THUMBNAIL, LOW confidence, isOriginal=false. Nothing here can prove the
+ * original is gone: the original may still exist, and the UI says so.
+ * .thumbdata blobs are not parsed (they are not JPEG files); they are skipped, not misreported.
  */
 object ThumbnailCacheScanner {
 
-    private val THUMB_DIR_NAMES = setOf(".thumbnails", "thumbnails", "thumbs")
+    private val THUMB_DIR_NAMES = setOf(".thumbnails", "thumbnails", ".thumbs", "thumbs")
+    private val PARENT_DIRS = listOf(
+        "", Environment.DIRECTORY_DCIM, Environment.DIRECTORY_PICTURES,
+        Environment.DIRECTORY_MOVIES, Environment.DIRECTORY_DOWNLOADS
+    )
+    private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "webp")
+    private const val MIN_BYTES = 2L * 1024 // below this it is an icon/stub, not a usable preview
+    private const val MAX_DEPTH = 3
 
     fun scan(
-        context: Context,
         storageRoots: List<File>,
         onProgress: (count: Int, label: String) -> Unit
     ): List<ScannedFile> {
         val results = mutableListOf<ScannedFile>()
-
-        // App's own cache — always legitimately accessible.
-        context.externalCacheDir?.let { scanDir(it, results) }
-        context.cacheDir.let { scanDir(it, results) }
-        onProgress(results.size, "Scanning app cache...")
-
-        // Shallow probe (2 levels) of known thumbnail folder names under each discovered root;
-        // most are inaccessible under modern scoped storage and will simply be skipped.
-        // Reports live count before AND after each root so the caller's progress/found count
-        // keeps moving through this phase instead of freezing until the whole phase finishes.
+        val seen = mutableSetOf<String>()
         for (root in storageRoots) {
-            onProgress(results.size, "Scanning thumbnails in ${root.name}...")
-            THUMB_DIR_NAMES.forEach { name ->
-                val candidate = File(root, name)
-                if (candidate.exists() && candidate.canRead()) {
-                    scanDir(candidate, results, maxDepth = 2)
+            onProgress(results.size, "Checking thumbnail caches in ${root.name}...")
+            for (parent in PARENT_DIRS) {
+                val base = if (parent.isEmpty()) root else File(root, parent)
+                for (name in THUMB_DIR_NAMES) {
+                    val dir = File(base, name)
+                    if (dir.isDirectory && dir.canRead() && seen.add(dir.absolutePath)) {
+                        scanDir(dir, results, 0)
+                    }
                 }
             }
-            onProgress(results.size, "Scanning thumbnails in ${root.name}...")
+            onProgress(results.size, "Checking thumbnail caches in ${root.name}...")
         }
         return results
     }
 
-    private fun scanDir(dir: File, results: MutableList<ScannedFile>, depth: Int = 0, maxDepth: Int = 1) {
-        if (depth > maxDepth) return
+    private fun scanDir(dir: File, results: MutableList<ScannedFile>, depth: Int) {
+        if (depth > MAX_DEPTH) return
         val children = try { dir.listFiles() } catch (e: Exception) { null } ?: return
         for (child in children) {
             try {
                 if (child.isDirectory) {
-                    scanDir(child, results, depth + 1, maxDepth)
+                    scanDir(child, results, depth + 1)
                     continue
                 }
-                @Suppress("UNUSED_EXPRESSION") Unit
+                val len = child.length()
+                if (len < MIN_BYTES) continue
+                val fmt = sniff(child)
+                if (!SignatureValidator.isPlausibleFor(FileCategory.PHOTO, fmt)) continue
+
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(child.absolutePath, opts)
+                if (opts.outWidth <= 0 || opts.outHeight <= 0) continue
+
                 val ext = child.extension.lowercase()
-                if (ext !in setOf("jpg", "jpeg", "png", "webp")) continue
-                if (child.length() <= 0) continue
+                val name = if (ext in IMAGE_EXT) child.name
+                else child.name + "." + (RecoveryEvidence.extensionFor(fmt) ?: "jpg")
+
                 results.add(
                     ScannedFile(
-                        id = "thumb-${child.absolutePath.hashCode()}",
-                        name = child.name,
-                        sizeLabel = formatSize(child.length()),
+                        id = "thumb-${child.absolutePath}",
+                        name = name,
+                        sizeLabel = formatSize(len),
                         category = FileCategory.PHOTO,
                         confidence = RecoveryConfidence.ON_DEVICE,
                         uriString = Uri.fromFile(child).toString(),
                         dateAddedLabel = formatDate(child.lastModified()),
                         liveStatus = LiveStatus.POSSIBLY_RECOVERABLE,
-                        sizeBytes = child.length(),
-                        dedupeKey = "${child.name}-${child.length()}",
-                        source = ScanSource.THUMBNAIL
+                        confidenceLevel = ConfidenceLevel.LOW,
+                        sizeBytes = len,
+                        dedupeKey = "${child.name}-$len",
+                        source = ScanSource.THUMBNAIL,
+                        sourceKind = RecoverySourceKind.RECOVERED_THUMBNAIL,
+                        evidence = "Cached preview (${opts.outWidth}×${opts.outHeight}px) found in '${dir.name}'. " +
+                                "This is a small preview, not the original file, and the original may still exist."
                     )
                 )
             } catch (e: Exception) {
-                // skip unreadable entry, don't abort the rest of the cache scan
+                // skip unreadable entry, keep scanning
             }
         }
+    }
+
+    private fun sniff(file: File): SignatureValidator.DetectedFormat = try {
+        FileInputStream(file).use { s ->
+            val h = ByteArray(32)
+            val n = s.read(h)
+            if (n <= 0) SignatureValidator.DetectedFormat.UNKNOWN else SignatureValidator.detectFromBytes(h, n)
+        }
+    } catch (e: Exception) {
+        SignatureValidator.DetectedFormat.UNKNOWN
     }
 
     private fun formatSize(bytes: Long): String {

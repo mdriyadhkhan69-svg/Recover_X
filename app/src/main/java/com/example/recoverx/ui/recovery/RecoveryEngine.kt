@@ -40,7 +40,11 @@ object RecoveryEngine {
         }
         return try {
             val values = ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 0) }
-            val rows = context.contentResolver.update(uri, values, null, null)
+            // The row is currently trashed, so the update must be told to include trashed rows.
+            val extras = android.os.Bundle().apply {
+                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+            }
+            val rows = context.contentResolver.update(uri, values, extras)
             if (rows > 0) RecoveryResult.Success(uri.toString()) else RecoveryResult.Failed("Restore করা যায়নি")
         } catch (e: RecoverableSecurityException) {
             // Android অনেক সময় owner app না হলে user-এর explicit confirmation চায়
@@ -62,12 +66,19 @@ object RecoveryEngine {
     private fun copyToRecoveredFolder(context: Context, file: ScannedFile, sourceUri: Uri): RecoveryResult {
         return try {
             val resolver = context.contentResolver
-            val mimeType = resolver.getType(sourceUri) ?: guessMimeType(file.category)
+            val ext = file.name.substringAfterLast('.', "").lowercase()
+            val mimeType = file.mimeType
+                ?: android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+                ?: resolver.getType(sourceUri)
+                ?: guessMimeType(file.category)
+            // Previews are saved separately and named so they can't be mistaken for originals.
+            val displayName = if (file.isOriginalFile) file.name else "thumbnail_${file.name}"
+            val subFolder = if (file.isOriginalFile) "Recovered" else "Recovered/Thumbnails"
 
             val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, file.name)
+                put(MediaStore.Downloads.DISPLAY_NAME, displayName)
                 put(MediaStore.Downloads.MIME_TYPE, mimeType)
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/RecoverX/Recovered")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/RecoverX/" + subFolder)
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
 

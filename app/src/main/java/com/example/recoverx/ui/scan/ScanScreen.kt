@@ -54,6 +54,7 @@ fun ScanScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var currentSourceLabel by remember { mutableStateOf("") }
     var inaccessibleLocations by remember { mutableStateOf(emptyList<String>()) }
+    var sourceReports by remember { mutableStateOf(emptyList<com.example.recoverx.scanner.SourceReport>()) }
     var retryTrigger by remember { mutableIntStateOf(0) }
 
     // Filter চাপার জন্য নতুন state — শুধু Scan Complete screen-এর নিজস্ব Filter button-এর জন্য।
@@ -141,6 +142,7 @@ fun ScanScreen(
             if (!cancelled) {
                 ScanResultsHolder.results = outcome.results
                 inaccessibleLocations = outcome.inaccessibleLocations
+                sourceReports = outcome.sourceReports
                 filesFound = outcome.results.size
                 progress = 1f
                 isComplete = true
@@ -288,10 +290,31 @@ fun ScanScreen(
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "$filesFound recoverable candidates found.",
+                    text = if (filesFound == 0)
+                        "No deleted files were found in accessible recovery sources."
+                    else
+                        "$filesFound recoverable candidates found.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )
+                if (sourceReports.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    sourceReports.forEach { r ->
+                        val mark = when (r.state.name) {
+                            "CHECKED" -> "✓"
+                            "NOT_RUN" -> "–"
+                            else -> "✗"
+                        }
+                        val detail = if (r.state.name == "CHECKED") {
+                            "${r.found}" + if (r.note.isNotBlank()) " (${r.note})" else ""
+                        } else r.note
+                        Text(
+                            text = "$mark ${r.label}: $detail",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = {
                     onScanComplete(filesFound)

@@ -77,8 +77,13 @@ fun RecoveryScreen(
                 }
             }
 
-            val status = if (result is RecoveryResult.Success) "Recovered" else "Failed"
-            if (status == "Recovered") successCount += 1 else failedCount += 1
+            val ok = result is RecoveryResult.Success
+            val status = when {
+                !ok -> "Failed"
+                file.isOriginalFile -> "Recovered"
+                else -> "Recovered thumbnail (preview only)"
+            }
+            if (ok) successCount += 1 else failedCount += 1
             processedCount += 1
 
             repository.add(

@@ -1,6 +1,7 @@
 package com.example.recoverx.scanner
 
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import android.os.storage.StorageManager
 import android.util.Log
@@ -38,11 +39,18 @@ object StorageRootDiscovery {
             val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
             storageManager?.storageVolumes?.forEach { volume ->
                 try {
-                    val dir = volume.javaClass.getMethod("getPath").invoke(volume) as? String
-                    // getPath() is hidden API on some versions; prefer the public directory() where available
-                    val publicDir = try {
-                        volume.directory
-                    } catch (e: Throwable) { null }
+                    // Only mounted volumes can be read.
+                    if (volume.state != Environment.MEDIA_MOUNTED && volume.state != Environment.MEDIA_MOUNTED_READ_ONLY) {
+                        return@forEach
+                    }
+                    // Public API first (API 30+). The hidden getPath() is only a fallback and can no
+                    // longer abort inspection of the volume if reflection is blocked.
+                    val publicDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        try { volume.directory } catch (e: Throwable) { null }
+                    } else null
+                    val dir = if (publicDir == null) {
+                        try { volume.javaClass.getMethod("getPath").invoke(volume) as? String } catch (e: Throwable) { null }
+                    } else null
                     val resolved = publicDir ?: dir?.let { File(it) }
                     if (resolved != null && resolved.canRead() && seenPaths.add(resolved.absolutePath)) {
                         roots.add(DiscoveredRoot(resolved, volume.isRemovable, volume.getDescription(context) ?: "Storage"))

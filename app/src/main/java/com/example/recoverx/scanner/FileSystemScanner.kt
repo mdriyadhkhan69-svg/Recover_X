@@ -10,18 +10,17 @@ import com.example.recoverx.model.ScanSource
 import com.example.recoverx.model.ScannedFile
 import com.example.recoverx.model.detectDocumentType
 import java.io.File
+import java.io.FileInputStream
 import java.text.SimpleDateFormat
-import java.util.Locale
 import java.util.Date
+import java.util.Locale
 
 /**
- * Recursive filesystem walker over app-accessible storage roots (internal + SD card + the
- * standard media subfolders). Does NOT touch other apps' private storage, does NOT attempt
- * Android/data or Android/obb unless the OS already grants read access to this app for it, and
- * does NOT follow paths outside what File.canRead() confirms is legitimately readable.
- *
- * Cycle/symlink protection: canonical paths are tracked per top-level walk so a symlink loop
- * cannot cause unbounded recursion.
+ * Recursive walk over app-accessible storage roots. A file becomes a candidate ONLY if
+ * RecoveryEvidence finds real evidence (.trashed- marker, expired .pending-, trash-like folder,
+ * LOST.DIR/FOUND.000). Live files in DCIM/Pictures/etc. are never candidates.
+ * Extension-less fragments inside recovery folders are classified by header bytes.
+ * Cycle protection: canonical paths are tracked per scan.
  */
 object FileSystemScanner {
 
@@ -76,9 +75,8 @@ object FileSystemScanner {
         if (depth > MAX_DEPTH) return scanned
 
         val canonical = try { dir.canonicalPath } catch (e: Exception) { dir.absolutePath }
-        if (!visitedCanonical.add(canonical)) return scanned // already visited -> cycle guard
+        if (!visitedCanonical.add(canonical)) return scanned
 
-        // Don't attempt other apps' private sandboxes; only skip if unreadable, never force access.
         if (dir.name == "data" && dir.parentFile?.name == "Android" && !dir.canRead()) {
             onSkipped(SkippedRoot(dir.absolutePath, "Restricted (Android/data)"))
             return scanned
@@ -93,9 +91,6 @@ object FileSystemScanner {
         for (child in children) {
             try {
                 if (child.isDirectory) {
-                    // Count the directory itself as "scanned" too — real IO/traversal time is
-                    // spent here even when it contains no matching files, so progress must move
-                    // through it instead of freezing until matching files are found deeper down.
                     scanned++
                     if (scanned % PROGRESS_BATCH == 0) {
                         onProgress(scanned, results.size, "Scanning ${child.name}...")
@@ -103,35 +98,12 @@ object FileSystemScanner {
                     scanned = walk(child, depth + 1, visitedCanonical, liveMediaPaths, results, scanned, onProgress, onSkipped)
                     continue
                 }
-                val ext = child.extension.lowercase()
-                val category = when {
-                    ext in IMAGE_EXT -> FileCategory.PHOTO
-                    ext in VIDEO_EXT -> FileCategory.VIDEO
-                    ext in DOC_EXT -> FileCategory.DOCUMENT
-                    else -> null
-                }
-                if (category != null && child.length() > 0 &&
-                    isRecoveryCandidatePath(child) && !liveMediaPaths.contains(child.absolutePath)
-                ) {
-                    results.add(
-                        ScannedFile(
-                            id = "fs-${child.absolutePath}",
-                            name = cleanName(child.name),
-                            sizeLabel = formatSize(child.length()),
-                            category = category,
-                            confidence = RecoveryConfidence.ON_DEVICE,
-                            uriString = Uri.fromFile(child).toString(),
-                            dateAddedLabel = formatDate(child.lastModified()),
-                            documentType = if (category == FileCategory.DOCUMENT) detectDocumentType(child.name, null) else DocumentType.OTHER,
-                            liveStatus = LiveStatus.POSSIBLY_RECOVERABLE,
-                            sizeBytes = child.length(),
-                            dedupeKey = "${child.name}-${child.length()}",
-                            source = ScanSource.FILESYSTEM
-                        )
-                    )
+                val evidence = RecoveryEvidence.classify(child)
+                if (evidence != null && !liveMediaPaths.contains(child.absolutePath)) {
+                    toCandidate(child, evidence)?.let { results.add(it) }
                 }
             } catch (rowError: Exception) {
-                Log.w(TAG, "Entry পড়া যায়নি, স্কিপ করা হলো: ${rowError.message}")
+                Log.w(TAG, "Entry unreadable, skipped: ${rowError.message}")
             }
             scanned++
             if (scanned % PROGRESS_BATCH == 0) {
@@ -141,27 +113,51 @@ object FileSystemScanner {
         return scanned
     }
 
-    private val TRASH_DIR_HINTS = listOf(
-        "trash", "recycle", ".trashed", "lost.dir", ".recently", "deleted"
-    )
-    private val TRASH_PREFIX = Regex("^\\.(trashed|pending)-\\d+-")
-
-    /** A file on disk is only a recovery candidate if it lives in a trash-like place. */
-    private fun isRecoveryCandidatePath(file: File): Boolean {
-        val n = file.name.lowercase()
-        if (n.startsWith(".trashed-") || n.startsWith(".pending-")) return true
-        var p = file.parentFile
-        var hops = 0
-        while (p != null && hops < 6) {
-            val pn = p.name.lowercase()
-            if (TRASH_DIR_HINTS.any { pn.contains(it) }) return true
-            p = p.parentFile
-            hops++
+    private fun toCandidate(file: File, ev: RecoveryEvidence.Evidence): ScannedFile? {
+        val len = file.length()
+        if (len <= 0L) return null
+        val ext = file.extension.lowercase()
+        var category: FileCategory? = when {
+            ext in IMAGE_EXT -> FileCategory.PHOTO
+            ext in VIDEO_EXT -> FileCategory.VIDEO
+            ext in DOC_EXT -> FileCategory.DOCUMENT
+            else -> null
         }
-        return false
+        var displayName = RecoveryEvidence.cleanName(file.name)
+        if (category == null) {
+            // Extension-less fragment inside a recovery folder: decide from header bytes only.
+            val fmt = sniff(file)
+            category = RecoveryEvidence.categoryFor(fmt) ?: return null
+            displayName += "." + (RecoveryEvidence.extensionFor(fmt) ?: return null)
+        }
+        return ScannedFile(
+            id = "fs-${file.absolutePath}",
+            name = displayName,
+            sizeLabel = formatSize(len),
+            category = category,
+            confidence = RecoveryConfidence.ON_DEVICE,
+            uriString = Uri.fromFile(file).toString(),
+            dateAddedLabel = formatDate(file.lastModified()),
+            documentType = if (category == FileCategory.DOCUMENT) detectDocumentType(displayName, null) else DocumentType.OTHER,
+            liveStatus = LiveStatus.POSSIBLY_RECOVERABLE,
+            confidenceLevel = ev.level,
+            sizeBytes = len,
+            dedupeKey = "${file.name}-$len",
+            source = ScanSource.FILESYSTEM,
+            sourceKind = ev.kind,
+            evidence = ev.text
+        )
     }
 
-    private fun cleanName(name: String): String = name.replace(TRASH_PREFIX, "").ifBlank { name }
+    private fun sniff(file: File): SignatureValidator.DetectedFormat = try {
+        FileInputStream(file).use { s ->
+            val h = ByteArray(32)
+            val n = s.read(h)
+            if (n <= 0) SignatureValidator.DetectedFormat.UNKNOWN else SignatureValidator.detectFromBytes(h, n)
+        }
+    } catch (e: Exception) {
+        SignatureValidator.DetectedFormat.UNKNOWN
+    }
 
     private fun formatSize(bytes: Long): String {
         val kb = bytes / 1024.0

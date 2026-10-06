@@ -16,6 +16,12 @@ object CandidateValidator {
         if (f.sizeBytes <= 0L) return false
         return try {
             val uri = Uri.parse(raw)
+            // MediaStore itself is the authority for a trash row. If the bytes can't be opened through
+            // the plain URI at all (providers may refuse trashed rows), keep the row rather than silently
+            // dropping a genuine trash item. Restore goes through MediaStore, not through reading bytes.
+            if (f.sourceKind == com.example.recoverx.model.RecoverySourceKind.MEDIASTORE_TRASH && !canOpen(context, uri)) {
+                return true
+            }
             when (f.category) {
                 FileCategory.PHOTO -> validImage(context, uri)
                 FileCategory.VIDEO -> validVideo(context, uri)
@@ -23,6 +29,10 @@ object CandidateValidator {
             }
         } catch (e: Exception) { false }
     }
+
+    private fun canOpen(context: Context, uri: Uri): Boolean = try {
+        context.contentResolver.openInputStream(uri)?.use { true } ?: false
+    } catch (e: Exception) { false }
 
     private fun validImage(context: Context, uri: Uri): Boolean {
         val fmt = SignatureValidator.detect(context, uri)
