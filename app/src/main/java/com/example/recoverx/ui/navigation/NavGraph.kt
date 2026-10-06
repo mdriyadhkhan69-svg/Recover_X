@@ -86,7 +86,7 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.Results.route) {
             ResultsScreen(
                 onFileClick = { file ->
-                    navController.navigate("preview/${file.id}")
+                    navController.navigate("preview/${android.net.Uri.encode(file.id)}")
                 },
                 onRecoverSelected = { selectedFiles ->
                     RecoverySelectionHolder.selectedFiles = selectedFiles
@@ -100,7 +100,7 @@ fun NavGraph(navController: NavHostController) {
         ) { backStackEntry ->
             val fileId = backStackEntry.arguments?.getString("fileId")
             // এখন পর্যন্ত mock data থেকে খুঁজছি — Phase 13-এ real scan result থেকে আসবে
-            val file = com.example.recoverx.model.ScanResultsHolder.results.find { it.id == fileId }
+            val file = com.example.recoverx.model.ScanResultsHolder.results.find { it.id == fileId || it.id == android.net.Uri.decode(fileId ?: "") }
             if (file != null) {
                 PreviewScreen(
                     file = file,

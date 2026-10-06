@@ -35,7 +35,10 @@ import com.example.recoverx.security.ScanPasswordManager.VerifyResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.text.input.VisualTransformation
 @Composable
 fun ScanPasswordPrompt(onVerified: () -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
@@ -44,6 +47,7 @@ fun ScanPasswordPrompt(onVerified: () -> Unit, onCancel: () -> Unit) {
     var input by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var show by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -59,7 +63,12 @@ fun ScanPasswordPrompt(onVerified: () -> Unit, onCancel: () -> Unit) {
             onValueChange = { input = it; error = null },
             label = { Text("Password") },
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { show = !show }) {
+                    Icon(if (show) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, contentDescription = "Show password")
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth()
         )

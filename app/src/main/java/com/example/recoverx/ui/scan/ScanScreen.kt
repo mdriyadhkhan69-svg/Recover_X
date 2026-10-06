@@ -315,13 +315,7 @@ fun ScanScreen(
                         )
                     }
                 }
-                com.example.recoverx.scanner.DropDiag.lines.forEach { line ->
-                    Text(
-                        text = line,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
+
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = {
                     onScanComplete(filesFound)

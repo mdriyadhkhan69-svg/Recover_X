@@ -28,7 +28,10 @@ import com.example.recoverx.security.ScanPasswordManager.VerifyResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.text.input.VisualTransformation
 @Composable
 fun ScanPasswordSection() {
     val context = LocalContext.current
@@ -116,12 +119,22 @@ private fun PasswordDialog(
 
 @Composable
 private fun PwField(label: String, value: String, onChange: (String) -> Unit) {
+    var show by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
+        visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { show = !show }) {
+                androidx.compose.material3.Icon(
+                    if (show) androidx.compose.material.icons.Icons.Filled.VisibilityOff
+                    else androidx.compose.material.icons.Icons.Filled.Visibility,
+                    contentDescription = "Show password"
+                )
+            }
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
     )
 }
