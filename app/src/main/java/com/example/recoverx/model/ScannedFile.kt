@@ -12,7 +12,7 @@ enum class RecoveryConfidence {
 // UI-facing classification layer (does not change recovery routing logic in RecoveryEngine,
 // only how a result is labeled/prioritized in the results list).
 enum class ScanSource {
-    FILESYSTEM, MEDIASTORE, SAF, THUMBNAIL, CACHE, TRASH, SD_CARD, SECURE_FOLDER
+    FILESYSTEM, MEDIASTORE, SAF, THUMBNAIL, CACHE, TRASH, SD_CARD, SECURE_FOLDER, BACKUP
 }
 
 enum class LiveStatus {
@@ -32,6 +32,7 @@ enum class RecoverySourceKind(val label: String, val isOriginal: Boolean) {
     ORPHAN_FILE("Orphaned File", true),
     RECOVERED_THUMBNAIL("Recovered Thumbnail (preview only)", false),
     CARVED("Carved from raw storage (root)", true),
+    BACKUP_COPY("Auto-backup copy", true),
     UNKNOWN("Unknown", true)
 }
 
@@ -66,6 +67,7 @@ data class ScannedFile(
                 RecoverySourceKind.ORPHAN_FILE -> "Orphaned file"
                 RecoverySourceKind.RECOVERED_THUMBNAIL -> "Thumbnail only — not the original"
                 RecoverySourceKind.CARVED -> "Carved from raw storage"
+                RecoverySourceKind.BACKUP_COPY -> "In RecoverX backup — recoverable"
                 RecoverySourceKind.LIVE_EXISTING, RecoverySourceKind.UNKNOWN -> when (confidence) {
                     RecoveryConfidence.TRASHED -> "In trash — recoverable"
                     RecoveryConfidence.ON_DEVICE -> "Currently on device"

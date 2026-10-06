@@ -13,6 +13,7 @@ object AppSettings {
     val scanDocuments = mutableStateOf(true)
 
     val confirmBeforeRecovery = mutableStateOf(true)
+    val rootCarving = mutableStateOf(true)
 
     val safFolderUris = mutableStateOf<Set<String>>(emptySet())
 

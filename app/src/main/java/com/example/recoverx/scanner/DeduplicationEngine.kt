@@ -13,6 +13,7 @@ import com.example.recoverx.model.ScannedFile
 object DeduplicationEngine {
 
     private val SOURCE_PRIORITY = mapOf(
+        ScanSource.BACKUP to 0,
         ScanSource.TRASH to 0,
         ScanSource.MEDIASTORE to 1,
         ScanSource.SAF to 2,

@@ -91,6 +91,7 @@ fun SettingsScreen() {
             SettingsSwitchRow("Images", AppSettings.scanImages)
             SettingsSwitchRow("Videos", AppSettings.scanVideos)
             SettingsSwitchRow("Documents", AppSettings.scanDocuments)
+            SettingsSwitchRow("Root raw-storage carving (needs root)", AppSettings.rootCarving)
         }
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -103,6 +104,12 @@ fun SettingsScreen() {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        SectionTitle("Auto-Backup (real recovery)")
+        SettingsCard {
+            BackupSection()
         }
 
         Spacer(modifier = Modifier.height(20.dp))

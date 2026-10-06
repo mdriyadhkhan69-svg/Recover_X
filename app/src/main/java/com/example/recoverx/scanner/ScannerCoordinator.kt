@@ -13,6 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
+import com.example.recoverx.backup.MediaBackupManager
+import com.example.recoverx.model.AppSettings
+
 data class ScanProgressUpdate(
     val scanned: Int,
     val found: Int,
@@ -94,6 +97,13 @@ object ScannerCoordinator {
             val (existing, mediaCandidates) = mediaResults.partition { it.liveStatus == LiveStatus.LIVE }
             existing.forEach { index.add(it) }
             candidates.addAll(mediaCandidates)
+            val backupResults = try {
+                BackupScanner.scan(context, includeImages, includeVideos)
+            } catch (e: Exception) {
+                Log.w(TAG, "Backup scan failed: ${e.message}")
+                emptyList()
+            }
+            candidates.addAll(backupResults)
             onProgress(ScanProgressUpdate(totalScanned, candidates.size, "Current-media index ready", MEDIA_PHASE_END))
 
             // ---- 2 + 3. Filesystem remnants and thumbnail/cache remnants (deep scan only) ----
@@ -144,7 +154,7 @@ object ScannerCoordinator {
                     emptyList()
                 }
                 candidates.addAll(thumbResults.take(1500).map(tag))
-                if (RootCarver.isRootAvailable()) {
+                if (AppSettings.rootCarving.value && RootCarver.isRootAvailable()) {
                     val device = RootCarver.findDevice()
                     if (device != null) {
                         onProgress(ScanProgressUpdate(totalScanned, candidates.size, "Root: carving raw storage (slow)...", THUMB_PHASE_END))
@@ -240,6 +250,9 @@ object ScannerCoordinator {
                 else -> SourceReport("Removable storage", SourceReport.State.CHECKED,
                     clean.count { it.source == ScanSource.SD_CARD }, "file level only")
             }
+            reports += SourceReport("RecoverX auto-backup copies", SourceReport.State.CHECKED,
+                clean.count { it.sourceKind == RecoverySourceKind.BACKUP_COPY },
+                if (MediaBackupManager.isEnabled(context)) "photos & videos" else "backup is OFF - turn on in Settings")
             reports += SourceReport("Raw / unallocated space", SourceReport.State.UNAVAILABLE, 0,
                 "not accessible to a normal Android app")
 
