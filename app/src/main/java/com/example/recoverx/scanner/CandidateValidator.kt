@@ -38,7 +38,7 @@ object CandidateValidator {
         val fmt = SignatureValidator.detect(context, uri)
         if (!SignatureValidator.isPlausibleFor(FileCategory.PHOTO, fmt)) return false
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) } ?: return false
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o); true } ?: return false
         return o.outWidth > 0 && o.outHeight > 0
     }
 

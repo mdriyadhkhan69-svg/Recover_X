@@ -30,6 +30,11 @@ data class SourceReport(
     enum class State { CHECKED, NOT_RUN, UNAVAILABLE }
 }
 
+/** TEMP DIAGNOSTIC: remove after debugging. */
+object DropDiag {
+    @Volatile var lines: List<String> = emptyList()
+}
+
 data class ScanOutcome(
     val results: List<ScannedFile>,
     val inaccessibleLocations: List<String>,
@@ -147,21 +152,33 @@ object ScannerCoordinator {
             // ---- 4. Validate -> exclude existing (originals only) -> fingerprint ----
             val survivors = ArrayList<ScannedFile>()
             val n = candidates.size.coerceAtLeast(1)
+            val diagCount = HashMap<String, Int>()
+            val diagSample = HashMap<String, String>()
+            fun diag(reason: String, f: ScannedFile) {
+                val key = "$reason | ${f.sourceKind} | ${f.category}"
+                diagCount[key] = (diagCount[key] ?: 0) + 1
+                if (!diagSample.containsKey(key)) diagSample[key] = "${f.name} (${f.sizeBytes} B) ${f.uriString}"
+            }
             candidates.forEachIndexed { i, f ->
                 ensureActive()
                 val uri = f.uriString?.let { Uri.parse(it) }
+                val tagInfo = "kind=${f.sourceKind} src=${f.source} cat=${f.category} size=${f.sizeBytes} name=${f.name} uri=${f.uriString}"
                 if (uri != null && CandidateValidator.isValid(context, f)) {
-                    // A genuine MediaStore trash row whose bytes can't be opened keeps a synthetic identity.
                     val id = ContentFingerprint.identity(context, uri)
                         ?: if (f.sourceKind == RecoverySourceKind.MEDIASTORE_TRASH) "mstrash:${f.id}" else null
                     if (id != null) {
-                        // A preview can never equal its original byte-for-byte, so the live-content
-                        // comparison only applies to results that claim to be originals.
                         val duplicatesLive = f.isOriginalFile && index.containsSameContent(context, f, uri, id)
                         if (!duplicatesLive) {
                             survivors.add(f.copy(fingerprint = id, dedupeKey = id))
+                            diag("KEPT", f)
+                        } else {
+                            diag("DUP_LIVE (file exists in Gallery)", f)
                         }
+                    } else {
+                        diag("NO_IDENTITY (could not read bytes)", f)
                     }
+                } else {
+                    diag(if (uri == null) "INVALID (no uri)" else "INVALID (validator rejected)", f)
                 }
                 if (i % 10 == 0) {
                     val p = THUMB_PHASE_END + (VERIFY_PHASE_END - THUMB_PHASE_END) * ((i + 1).toFloat() / n)
@@ -169,6 +186,8 @@ object ScannerCoordinator {
                 }
             }
 
+            DropDiag.lines = listOf("candidates before verify: ${candidates.size}") +
+                    diagCount.entries.sortedBy { it.key }.map { "${it.value}x  ${it.key}\n    e.g. ${diagSample[it.key]}" }
             // ---- 5. Content-based dedupe (sampled hash, then full hash to confirm) ----
             val keyed = survivors.groupBy { it.fingerprint }.flatMap { (_, g) ->
                 if (g.size == 1) g else g.map { f ->
