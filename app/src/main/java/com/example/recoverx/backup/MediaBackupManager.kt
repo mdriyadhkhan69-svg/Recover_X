@@ -81,6 +81,7 @@ object MediaBackupManager {
     @Synchronized
     fun sync(c: Context, stop: () -> Boolean = { false }): Int {
         return try {
+            migrateLegacy(c)
             ensureBaseline(c)
             syncTable(c, IMG, "img", KEY_LAST_IMG, stop) + syncTable(c, VID, "vid", KEY_LAST_VID, stop)
         } catch (e: SecurityException) {
@@ -95,7 +96,24 @@ object MediaBackupManager {
         prefs(c).edit().putLong(KEY_LAST_IMG, 0L).putLong(KEY_LAST_VID, 0L).apply()
         return sync(c, stop)
     }
+    private val LEGACY = Regex("^(img|vid)(\\d+)__(.+)$")
 
+    private fun migrateLegacy(c: Context) {
+        val dir = backupDir(c)
+        dir.listFiles()?.forEach { f ->
+            if (f.name.endsWith(".part")) { f.delete(); return@forEach }
+            val m = LEGACY.matchEntire(f.name) ?: return@forEach
+            val dest = File(dir, "${m.groupValues[1]}${m.groupValues[2]}.bak")
+            try {
+                if (!dest.exists()) {
+                    val tmp = File(dir, dest.name + ".part")
+                    f.inputStream().use { BackupVault.encryptFrom(c, it, m.groupValues[3], f.length(), tmp) }
+                    if (tmp.renameTo(dest)) dest.setLastModified(f.lastModified())
+                }
+                f.delete()
+            } catch (_: Exception) {}
+        }
+    }
     fun stats(c: Context): Pair<Int, Long> {
         val files = backupDir(c).listFiles()?.filter { !it.name.endsWith(".part") } ?: emptyList()
         return files.size to files.sumOf { it.length() }
@@ -140,10 +158,10 @@ object MediaBackupManager {
                 val name = cur.getString(1) ?: "file"
                 val size = cur.getLong(2)
                 val added = cur.getLong(3)
-                val dest = File(dir, "$prefix${id}__${name.replace(Regex("[^A-Za-z0-9._\\- ]"), "_")}")
+                val dest = File(dir, "$prefix$id.bak")
                 if (size > 0 && !dest.exists()) {
                     if (used + size > MAX_BYTES) break
-                    if (copy(c, ContentUris.withAppendedId(base, id), dest, added)) {
+                    if (copy(c, ContentUris.withAppendedId(base, id), dest, added, name, size)) {
                         used += size
                         copied++
                     }
@@ -154,11 +172,12 @@ object MediaBackupManager {
         return copied
     }
 
-    private fun copy(c: Context, src: Uri, dest: File, addedSec: Long): Boolean {
+    private fun copy(c: Context, src: Uri, dest: File, addedSec: Long, name: String, size: Long): Boolean {
         val tmp = File(dest.parentFile, dest.name + ".part")
         return try {
+            if (tmp.exists()) tmp.delete()
             val input = c.contentResolver.openInputStream(src) ?: return false
-            input.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+            input.use { BackupVault.encryptFrom(c, it, name, size, tmp) }
             if (!tmp.renameTo(dest)) { tmp.delete(); return false }
             dest.setLastModified(addedSec * 1000)
             true

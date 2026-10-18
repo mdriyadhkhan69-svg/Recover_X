@@ -9,6 +9,7 @@ import com.example.recoverx.backup.MediaBackupManager
 class RecoverXApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        com.example.recoverx.backup.BackupVault.clearViewCache(this)
         if (MediaBackupManager.isEnabled(this)) {
             MediaBackupManager.schedule(this)
             Thread { MediaBackupManager.sync(this) }.start()

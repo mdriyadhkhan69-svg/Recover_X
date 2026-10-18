@@ -17,10 +17,11 @@ import com.example.recoverx.model.ScannedFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.example.recoverx.backup.BackupVault
 
 /** Lists auto-backup copies whose original is no longer in MediaStore (live or trash). */
 object BackupScanner {
-    private val NAME = Regex("^(img|vid)(\\d+)__(.+)$")
+    private val NAME = Regex("^(img|vid)(\\d+)\\.bak$")
 
     fun scan(context: Context, includeImages: Boolean, includeVideos: Boolean): List<ScannedFile> {
         val files = MediaBackupManager.backupDir(context).listFiles() ?: return emptyList()
@@ -32,12 +33,16 @@ object BackupScanner {
                 if (isImg && !includeImages) continue
                 if (!isImg && !includeVideos) continue
                 val id = m.groupValues[2].toLong()
-                val len = f.length()
-                if (len <= 0L) continue
+                val header = BackupVault.readHeader(context, f) ?: continue
+                if (header.size <= 0L) continue
                 val base = if (isImg) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
                 else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                if (existsInMediaStore(context, base, id, len)) continue
-                val name = m.groupValues[3]
+                // Original still exists -> not an orphan, skip WITHOUT decrypting anything.
+                if (existsInMediaStore(context, base, id, header.size)) continue
+                val plain = BackupVault.decryptToView(context, f) ?: continue
+                val len = plain.length()
+                if (len <= 0L) continue
+                val name = header.name
                 out.add(
                     ScannedFile(
                         id = "backup-${f.name}",
@@ -45,7 +50,7 @@ object BackupScanner {
                         sizeLabel = formatSize(len),
                         category = if (isImg) FileCategory.PHOTO else FileCategory.VIDEO,
                         confidence = RecoveryConfidence.ON_DEVICE,
-                        uriString = Uri.fromFile(f).toString(),
+                        uriString = Uri.fromFile(plain).toString(),
                         dateAddedLabel = formatDate(f.lastModified()),
                         liveStatus = LiveStatus.RECOVERABLE,
                         confidenceLevel = ConfidenceLevel.HIGH,

@@ -18,6 +18,10 @@ import com.example.recoverx.ui.splash.SplashScreen
 import com.example.recoverx.ui.theme.RecoverXTheme
 
 class MainActivity : ComponentActivity() {
+    override fun onDestroy() {
+        super.onDestroy()
+        com.example.recoverx.backup.BackupVault.clearViewCache(this)
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

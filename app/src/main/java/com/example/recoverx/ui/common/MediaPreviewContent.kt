@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.example.recoverx.model.FileCategory
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 @Composable
 fun MediaPreviewContent(
@@ -53,7 +55,12 @@ fun MediaPreviewContent(
     val uri = remember(uriString) { uriString?.let { Uri.parse(it) } }
     var previewFailed by remember(uriString) { mutableStateOf(uri == null) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp)
+    ) {
         Card(
             modifier = Modifier.fillMaxWidth().height(280.dp),
             shape = RoundedCornerShape(20.dp),
@@ -184,6 +191,7 @@ fun MediaPreviewContent(
             Button(onClick = onPrimaryAction, modifier = Modifier.fillMaxWidth()) {
                 Text(primaryActionLabel)
             }
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
